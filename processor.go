@@ -96,7 +96,6 @@ func (p *ImageProcessor) processQueue() {
 
 func (p *ImageProcessor) ProcessFolder(folderPath string) string {
 	p.mu.Lock()
-	defer p.mu.Unlock()
 
 	id := fmt.Sprintf("job_%d", len(p.jobs)+1)
 	outputFolder := folderPath + "_translated"
@@ -110,6 +109,7 @@ func (p *ImageProcessor) ProcessFolder(folderPath string) string {
 		resumeChan: make(chan struct{}),
 	}
 	p.jobs[id] = job
+	p.mu.Unlock()
 
 	p.jobQueue <- job
 	p.emitJobUpdateForce(job)
@@ -295,6 +295,13 @@ func (p *ImageProcessor) copyFile(src, dst string) error {
 }
 
 func (p *ImageProcessor) emitJobUpdate(job *CompressionJob) {
+	p.mu.Lock()
+	_, exists := p.jobs[job.ID]
+	p.mu.Unlock()
+	if !exists {
+		return
+	}
+
 	job.mu.Lock()
 	now := time.Now()
 	if now.Sub(job.lastUpdate) < 300*time.Millisecond {
@@ -321,6 +328,13 @@ func (p *ImageProcessor) emitJobUpdate(job *CompressionJob) {
 }
 
 func (p *ImageProcessor) emitJobUpdateForce(job *CompressionJob) {
+	p.mu.Lock()
+	_, exists := p.jobs[job.ID]
+	p.mu.Unlock()
+	if !exists {
+		return
+	}
+
 	job.mu.Lock()
 	job.lastUpdate = time.Now()
 	display := JobDisplay{
