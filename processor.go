@@ -18,7 +18,6 @@ import (
 	_ "image/png"
 
 	"github.com/gen2brain/avif"
-	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 	"golang.org/x/image/webp"
 )
 
@@ -33,7 +32,7 @@ const (
 	StatusError      JobStatus = "error"
 )
 
-// JobDisplay is a clean copy for the frontend to avoid data races
+// JobDisplay is a clean copy for the UI to avoid data races
 type JobDisplay struct {
 	ID          string    `json:"id"`
 	SourcePath  string    `json:"sourcePath"`
@@ -46,14 +45,14 @@ type JobDisplay struct {
 }
 
 type CompressionJob struct {
-	ID          string    `json:"id"`
-	SourcePath  string    `json:"sourcePath"`
-	OutputPath  string    `json:"outputPath"`
-	Status      JobStatus `json:"status"`
-	Progress    int       `json:"progress"`
-	TotalFiles  int       `json:"totalFiles"`
-	DoneFiles   int       `json:"doneFiles"`
-	CurrentFile string    `json:"currentFile"`
+	ID          string
+	SourcePath  string
+	OutputPath  string
+	Status      JobStatus
+	Progress    int
+	TotalFiles  int
+	DoneFiles   int
+	CurrentFile string
 	cancel      context.CancelFunc
 	pauseChan   chan struct{}
 	resumeChan  chan struct{}
@@ -66,12 +65,14 @@ type ImageProcessor struct {
 	jobs     map[string]*CompressionJob
 	jobQueue chan *CompressionJob
 	mu       sync.Mutex
+	onUpdate func(JobDisplay)
 }
 
-func NewImageProcessor() *ImageProcessor {
+func NewImageProcessor(onUpdate func(JobDisplay)) *ImageProcessor {
 	return &ImageProcessor{
 		jobs:     make(map[string]*CompressionJob),
 		jobQueue: make(chan *CompressionJob, 100),
+		onUpdate: onUpdate,
 	}
 }
 
@@ -91,16 +92,6 @@ func (p *ImageProcessor) processQueue() {
 			time.Sleep(100 * time.Millisecond)
 		}
 	}
-}
-
-func (p *ImageProcessor) SelectFolder() string {
-	folder, err := wailsRuntime.OpenDirectoryDialog(p.ctx, wailsRuntime.OpenDialogOptions{
-		Title: "Seleccionar carpeta de imágenes",
-	})
-	if err != nil || folder == "" {
-		return ""
-	}
-	return p.ProcessFolder(folder)
 }
 
 func (p *ImageProcessor) ProcessFolder(folderPath string) string {
@@ -127,7 +118,6 @@ func (p *ImageProcessor) ProcessFolder(folderPath string) string {
 }
 
 // ResolveFolder returns the directory path for a given file or directory path.
-// If the path is a file, it returns its parent directory.
 func (p *ImageProcessor) ResolveFolder(path string) string {
 	info, err := os.Stat(path)
 	if err != nil {
@@ -227,7 +217,6 @@ func (p *ImageProcessor) runJob(job *CompressionJob) {
 			job.mu.Unlock()
 			p.emitJobUpdate(job)
 
-			// Yield to system and sleep to keep UI alive
 			runtime.Gosched()
 			time.Sleep(50 * time.Millisecond)
 		}(filename)
@@ -270,7 +259,6 @@ func (p *ImageProcessor) compressSmart(src, outDir, filename string) error {
 		return err
 	}
 
-	// Speed 8 is faster and less CPU intensive
 	err = avif.Encode(out, img, avif.Options{Quality: 55, Speed: 8})
 	out.Close()
 
@@ -315,7 +303,6 @@ func (p *ImageProcessor) emitJobUpdate(job *CompressionJob) {
 	}
 	job.lastUpdate = now
 
-	// Create a copy for display
 	display := JobDisplay{
 		ID:          job.ID,
 		SourcePath:  job.SourcePath,
@@ -328,7 +315,9 @@ func (p *ImageProcessor) emitJobUpdate(job *CompressionJob) {
 	}
 	job.mu.Unlock()
 
-	wailsRuntime.EventsEmit(p.ctx, "jobUpdate", display)
+	if p.onUpdate != nil {
+		p.onUpdate(display)
+	}
 }
 
 func (p *ImageProcessor) emitJobUpdateForce(job *CompressionJob) {
@@ -345,7 +334,9 @@ func (p *ImageProcessor) emitJobUpdateForce(job *CompressionJob) {
 		CurrentFile: job.CurrentFile,
 	}
 	job.mu.Unlock()
-	wailsRuntime.EventsEmit(p.ctx, "jobUpdate", display)
+	if p.onUpdate != nil {
+		p.onUpdate(display)
+	}
 }
 
 func (p *ImageProcessor) PauseJob(id string) {
