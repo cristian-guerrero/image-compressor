@@ -14,6 +14,10 @@ export function ProcessFolder(arg1) {
   return window['go']['main']['ImageProcessor']['ProcessFolder'](arg1);
 }
 
+export function ResolveFolder(arg1) {
+  return window['go']['main']['ImageProcessor']['ResolveFolder'](arg1);
+}
+
 export function ResumeJob(arg1) {
   return window['go']['main']['ImageProcessor']['ResumeJob'](arg1);
 }

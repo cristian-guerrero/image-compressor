@@ -8,6 +8,8 @@ export function PauseJob(arg1:string):Promise<void>;
 
 export function ProcessFolder(arg1:string):Promise<string>;
 
+export function ResolveFolder(arg1:string):Promise<string>;
+
 export function ResumeJob(arg1:string):Promise<void>;
 
 export function SelectFolder():Promise<string>;

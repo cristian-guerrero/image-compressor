@@ -126,6 +126,19 @@ func (p *ImageProcessor) ProcessFolder(folderPath string) string {
 	return id
 }
 
+// ResolveFolder returns the directory path for a given file or directory path.
+// If the path is a file, it returns its parent directory.
+func (p *ImageProcessor) ResolveFolder(path string) string {
+	info, err := os.Stat(path)
+	if err != nil {
+		return ""
+	}
+	if info.IsDir() {
+		return path
+	}
+	return filepath.Dir(path)
+}
+
 func (p *ImageProcessor) runJob(job *CompressionJob) {
 	job.mu.Lock()
 	job.Status = StatusProcessing

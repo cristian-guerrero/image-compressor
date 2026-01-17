@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import './App.css';
-import { EventsOn } from '../wailsjs/runtime';
+import { EventsOn, OnFileDrop, OnFileDropOff } from '../wailsjs/runtime';
 import * as Processor from '../wailsjs/go/main/ImageProcessor';
 
 function App() {
@@ -26,29 +26,24 @@ function App() {
         });
 
         // Handle incoming file drops from Wails
-        const unsubscribeDrop = EventsOn("wails:file-drop", (x, y, paths) => {
-            console.log("Wails: Drop received", paths);
+        OnFileDrop(async (x, y, paths) => {
             if (paths && paths.length > 0) {
-                paths.forEach(path => {
-                    Processor.ProcessFolder(path).catch(console.error);
-                });
+                for (const path of paths) {
+                    try {
+                        const resolvedPath = await Processor.ResolveFolder(path);
+                        if (resolvedPath) {
+                            await Processor.ProcessFolder(resolvedPath);
+                        }
+                    } catch (err) {
+                        console.error("App: Error processing dropped path:", path, err);
+                    }
+                }
             }
-        });
-
-        // PREVENT BROWSER NAVIGATION
-        const preventDefault = (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-        };
-
-        window.addEventListener('dragover', preventDefault, false);
-        window.addEventListener('drop', preventDefault, false);
+        }, true);
 
         return () => {
-            window.removeEventListener('dragover', preventDefault);
-            window.removeEventListener('drop', preventDefault);
             unsubscribeUpdate();
-            unsubscribeDrop();
+            OnFileDropOff();
         };
     }, []);
 
@@ -73,8 +68,6 @@ function App() {
 
             <div
                 className={`drop-zone ${(!jobs || jobs.length === 0) ? 'empty' : 'with-jobs'}`}
-                onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                onDrop={(e) => { e.preventDefault(); e.stopPropagation(); }}
             >
                 {(!jobs || jobs.length === 0) ? (
                     <div className="drop-zone-content">
