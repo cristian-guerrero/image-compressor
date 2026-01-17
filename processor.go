@@ -21,6 +21,12 @@ import (
 	"golang.org/x/image/webp"
 )
 
+type CompressionConfig struct {
+	Quality int
+	Speed   int
+	Threads int
+}
+
 type JobStatus string
 
 const (
@@ -53,6 +59,7 @@ type CompressionJob struct {
 	TotalFiles  int
 	DoneFiles   int
 	CurrentFile string
+	Config      CompressionConfig
 	cancel      context.CancelFunc
 	pauseChan   chan struct{}
 	resumeChan  chan struct{}
@@ -94,7 +101,7 @@ func (p *ImageProcessor) processQueue() {
 	}
 }
 
-func (p *ImageProcessor) ProcessFolder(folderPath string) string {
+func (p *ImageProcessor) ProcessFolder(folderPath string, config CompressionConfig) string {
 	p.mu.Lock()
 
 	id := fmt.Sprintf("job_%d", len(p.jobs)+1)
@@ -105,6 +112,7 @@ func (p *ImageProcessor) ProcessFolder(folderPath string) string {
 		SourcePath: folderPath,
 		OutputPath: outputFolder,
 		Status:     StatusPending,
+		Config:     config,
 		pauseChan:  make(chan struct{}),
 		resumeChan: make(chan struct{}),
 	}
@@ -165,7 +173,11 @@ func (p *ImageProcessor) runJob(job *CompressionJob) {
 	ctx, cancel := context.WithCancel(p.ctx)
 	job.cancel = cancel
 
-	semaphore := make(chan struct{}, 2)
+	numWorkers := job.Config.Threads
+	if numWorkers < 1 {
+		numWorkers = runtime.NumCPU()
+	}
+	semaphore := make(chan struct{}, numWorkers)
 	var wg sync.WaitGroup
 
 	for _, filename := range imageFiles {
@@ -203,13 +215,37 @@ func (p *ImageProcessor) runJob(job *CompressionJob) {
 				wg.Done()
 			}()
 
+			// Check if already processed
+			avifName := strings.TrimSuffix(fname, filepath.Ext(fname)) + ".avif"
+			dstAvif := filepath.Join(job.OutputPath, avifName)
+			dstOriginal := filepath.Join(job.OutputPath, fname)
+
+			if _, err := os.Stat(dstAvif); err == nil {
+				// Already compressed
+				job.mu.Lock()
+				job.DoneFiles++
+				job.Progress = int((float64(job.DoneFiles) / float64(job.TotalFiles)) * 100)
+				job.mu.Unlock()
+				p.emitJobUpdate(job)
+				return
+			}
+			if _, err := os.Stat(dstOriginal); err == nil {
+				// Already copied (skipped compression previously)
+				job.mu.Lock()
+				job.DoneFiles++
+				job.Progress = int((float64(job.DoneFiles) / float64(job.TotalFiles)) * 100)
+				job.mu.Unlock()
+				p.emitJobUpdate(job)
+				return
+			}
+
 			job.mu.Lock()
 			job.CurrentFile = fname
 			job.mu.Unlock()
 			p.emitJobUpdate(job)
 
 			src := filepath.Join(job.SourcePath, fname)
-			p.compressSmart(src, job.OutputPath, fname)
+			p.compressSmart(src, job.OutputPath, fname, job.Config)
 
 			job.mu.Lock()
 			job.DoneFiles++
@@ -218,7 +254,6 @@ func (p *ImageProcessor) runJob(job *CompressionJob) {
 			p.emitJobUpdate(job)
 
 			runtime.Gosched()
-			time.Sleep(50 * time.Millisecond)
 		}(filename)
 	}
 
@@ -230,7 +265,7 @@ func (p *ImageProcessor) runJob(job *CompressionJob) {
 	debug.FreeOSMemory()
 }
 
-func (p *ImageProcessor) compressSmart(src, outDir, filename string) error {
+func (p *ImageProcessor) compressSmart(src, outDir, filename string, config CompressionConfig) error {
 	f, err := os.Open(src)
 	if err != nil {
 		return err
@@ -259,7 +294,7 @@ func (p *ImageProcessor) compressSmart(src, outDir, filename string) error {
 		return err
 	}
 
-	err = avif.Encode(out, img, avif.Options{Quality: 55, Speed: 8})
+	err = avif.Encode(out, img, avif.Options{Quality: config.Quality, Speed: config.Speed})
 	out.Close()
 
 	if err != nil {

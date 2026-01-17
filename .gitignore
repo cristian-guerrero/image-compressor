@@ -3,3 +3,4 @@ node_modules
 frontend/dist
 image-compressor
 tmp
+image-compressor-test

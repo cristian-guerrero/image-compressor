@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"runtime"
 	"sync"
 
 	"fyne.io/fyne/v2"
@@ -99,14 +100,63 @@ func main() {
 	processor.startup(context.Background())
 
 	header := container.NewVBox(
-		widget.NewLabelWithStyle("Manga Optimizer", fyne.TextAlignCenter, fyne.TextStyle{Bold: true}),
+		container.NewHBox(
+			layoutSpacer(),
+			widget.NewLabelWithStyle("Manga Optimizer", fyne.TextAlignCenter, fyne.TextStyle{Bold: true}),
+			layoutSpacer(),
+			widget.NewButtonWithIcon("", theme.HelpIcon(), func() {
+				showHelpDialog(myWindow)
+			}),
+		),
 		widget.NewLabelWithStyle("AVIF Smart Compression", fyne.TextAlignCenter, fyne.TextStyle{Italic: true}),
 	)
+
+	// Settings UI
+	qualityLabel := widget.NewLabel("Calidad: 55")
+	qualitySlider := widget.NewSlider(0, 100)
+	qualitySlider.Value = 55
+	qualitySlider.OnChanged = func(v float64) {
+		qualityLabel.SetText(fmt.Sprintf("Calidad: %d", int(v)))
+	}
+
+	speedLabel := widget.NewLabel("Velocidad: 8")
+	speedSlider := widget.NewSlider(0, 10)
+	speedSlider.Value = 8
+	speedSlider.OnChanged = func(v float64) {
+		speedLabel.SetText(fmt.Sprintf("Velocidad: %d", int(v)))
+	}
+
+	maxThreads := runtime.NumCPU()
+	if maxThreads < 1 {
+		maxThreads = 1
+	}
+	threadsLabel := widget.NewLabel(fmt.Sprintf("Hilos: %d", runtime.NumCPU()))
+	threadsSlider := widget.NewSlider(1, float64(maxThreads))
+	threadsSlider.Value = float64(runtime.NumCPU())
+	threadsSlider.OnChanged = func(v float64) {
+		threadsLabel.SetText(fmt.Sprintf("Hilos: %d", int(v)))
+	}
+
+	settingsCard := widget.NewCard("Ajustes de Compresión", "Afecta a las nuevas carpetas añadidas",
+		container.NewVBox(
+			container.NewBorder(nil, nil, widget.NewLabel("Calidad (0-100)"), qualityLabel, qualitySlider),
+			container.NewBorder(nil, nil, widget.NewLabel("Velocidad (0-10)"), speedLabel, speedSlider),
+			container.NewBorder(nil, nil, widget.NewLabel("Hilos (CPU)"), threadsLabel, threadsSlider),
+		),
+	)
+
+	getConfig := func() CompressionConfig {
+		return CompressionConfig{
+			Quality: int(qualitySlider.Value),
+			Speed:   int(speedSlider.Value),
+			Threads: int(threadsSlider.Value),
+		}
+	}
 
 	addFolderBtn := widget.NewButtonWithIcon("Añadir Carpeta", theme.ContentAddIcon(), func() {
 		dialog.ShowFolderOpen(func(list fyne.ListableURI, err error) {
 			if err == nil && list != nil {
-				processor.ProcessFolder(list.Path())
+				processor.ProcessFolder(list.Path(), getConfig())
 			}
 		}, myWindow)
 	})
@@ -123,7 +173,7 @@ func main() {
 			path := u.Path()
 			resolved := processor.ResolveFolder(path)
 			if resolved != "" {
-				processor.ProcessFolder(resolved)
+				processor.ProcessFolder(resolved, getConfig())
 			}
 		}
 	})
@@ -131,7 +181,7 @@ func main() {
 	scroll := container.NewVScroll(jobsListContainer)
 
 	mainContent := container.NewBorder(
-		container.NewVBox(header, addFolderBtn, dropZone, widget.NewSeparator()),
+		container.NewVBox(header, settingsCard, addFolderBtn, dropZone, widget.NewSeparator()),
 		nil, nil, nil,
 		scroll,
 	)
@@ -200,6 +250,34 @@ func refreshJobList(c *fyne.Container, cards map[string]*JobCard, mu *sync.Mutex
 		c.Add(card.container)
 	}
 	c.Refresh()
+}
+
+func showHelpDialog(w fyne.Window) {
+	content := container.NewVBox(
+		widget.NewLabelWithStyle("Guía de Usuario", fyne.TextAlignCenter, fyne.TextStyle{Bold: true}),
+		widget.NewSeparator(),
+
+		widget.NewLabelWithStyle("Ajustes de Compresión", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		widget.NewLabel("- Calidad: Define la fidelidad visual. 55-65 es recomendado."),
+		widget.NewLabel("- Velocidad: 0 es más lento (mejor compresión), 10 es más rápido."),
+		widget.NewLabel("- Hilos: Cuántas imágenes se procesan a la vez. Recomendado: # de CPUs."),
+
+		widget.NewSeparator(),
+		widget.NewLabelWithStyle("Uso de la Aplicación", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		widget.NewLabel("- Añadir Carpeta: Selecciona una carpeta para empezar a procesar."),
+		widget.NewLabel("- Drag & Drop: Arrastra carpetas directamente a la zona punteada."),
+		widget.NewLabel("- Salida: Crea una nueva carpeta con el sufijo '_translated'."),
+
+		widget.NewSeparator(),
+		widget.NewLabelWithStyle("Gestión de Procesos", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		widget.NewLabel("- Pausar/Reanudar: Detiene temporalmente el trabajo actual."),
+		widget.NewLabel("- Parar: Cancela el trabajo definitivamente."),
+		widget.NewLabel("- Eliminar: Quita el registro de la lista (solo disponible al terminar/parar)."),
+	)
+
+	d := dialog.NewCustom("Ayuda e Información", "Cerrar", content, w)
+	d.Resize(fyne.NewSize(450, 400))
+	d.Show()
 }
 
 func layoutSpacer() fyne.CanvasObject {
