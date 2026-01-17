@@ -374,6 +374,12 @@ func (p *ImageProcessor) StopJob(id string) {
 	}
 }
 
+func (p *ImageProcessor) DeleteJob(id string) {
+	p.mu.Lock()
+	delete(p.jobs, id)
+	p.mu.Unlock()
+}
+
 func (p *ImageProcessor) GetJobs() []JobDisplay {
 	p.mu.Lock()
 	defer p.mu.Unlock()

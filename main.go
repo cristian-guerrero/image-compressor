@@ -47,10 +47,10 @@ func main() {
 			if !ok {
 				// Create new card
 				card = createJobCard(job, processor, func(id string) {
+					processor.DeleteJob(id) // Remove from backend
 					mu.Lock()
 					delete(jobCards, id)
 					mu.Unlock()
-					// We need to refresh the list, but for simplicity in this VBox:
 					refreshJobList(jobsListContainer, jobCards, &mu)
 				})
 				mu.Lock()
