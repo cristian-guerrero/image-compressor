@@ -266,7 +266,7 @@ func showHelpDialog(w fyne.Window) {
 		widget.NewLabelWithStyle("Uso de la Aplicación", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 		widget.NewLabel("- Añadir Carpeta: Selecciona una carpeta para empezar a procesar."),
 		widget.NewLabel("- Drag & Drop: Arrastra carpetas directamente a la zona punteada."),
-		widget.NewLabel("- Salida: Crea una nueva carpeta con el sufijo '_translated'."),
+		widget.NewLabel("- Salida: Crea una nueva carpeta con el sufijo '(compressed)'."),
 
 		widget.NewSeparator(),
 		widget.NewLabelWithStyle("Gestión de Procesos", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),

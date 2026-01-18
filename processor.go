@@ -105,7 +105,7 @@ func (p *ImageProcessor) ProcessFolder(folderPath string, config CompressionConf
 	p.mu.Lock()
 
 	id := fmt.Sprintf("job_%d", len(p.jobs)+1)
-	outputFolder := folderPath + "_translated"
+	outputFolder := folderPath + " (compressed)"
 
 	job := &CompressionJob{
 		ID:         id,
