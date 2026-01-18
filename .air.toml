@@ -6,10 +6,10 @@ tmp_dir = "tmp"
 
 [build]
   args_bin = []
-  cmd = "go build -o ./tmp/main ."
-  bin = "./tmp/main"
+  cmd = "go build -ldflags \"-H windowsgui\" -o ./tmp/main.exe ."
+  bin = "./tmp/main.exe"
   delay = 1000
-  entrypoint = ["./tmp/main"]
+  entrypoint = ["./tmp/main.exe"]
   exclude_dir = ["assets", "tmp", "vendor", "testdata"]
   exclude_file = []
   exclude_regex = ["_test.go"]

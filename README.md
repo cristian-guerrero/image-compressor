@@ -44,7 +44,9 @@ To create a standalone executable:
 ```bash
 go build -o image-compressor .
 ```
-
+```powershell
+ go build -ldflags "-H windowsgui" -o image-compressor.exe .
+```
 ## 🛠️ Technology Stack
 
 - **Backend & UI**: Go (Golang) + [Fyne](https://fyne.io/)
