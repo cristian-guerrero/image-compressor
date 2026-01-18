@@ -54,15 +54,11 @@ jobs:
             mingw-w64-x86_64-libavif
 
       - name: Build for Windows
-        shell: msys2 {0}
-        env:
-          GOROOT: ${{ env.GOROOT_1_24_X64 }}
+        shell: pwsh
         run: |
-          export PATH="/mingw64/bin:$GOROOT/bin:$PATH"
-          export CGO_ENABLED=1
-          export GOOS=windows
-          export GOARCH=amd64
-          export CC=x86_64-w64-mingw32-gcc
+          $env:PATH = "D:\a\_temp\msys64\mingw64\bin;$env:PATH"
+          $env:CGO_ENABLED = "1"
+          $env:CC = "gcc"
           go build -ldflags="-H windowsgui" -o image-compressor-windows-amd64.exe .
 
       - name: Upload Windows artifact
