@@ -1,8 +1,8 @@
-# Manga Optimizer ⛩️
+# Image Optimizer ⛩️
 
-Manga Optimizer is a high-performance desktop application designed to bridge the gap between automatic translation tools and efficient storage. It specializes in converting "bloated" images from translators into ultra-optimized **AVIF** files without losing visual fidelity.
+Image Optimizer is a high-performance desktop application designed to bridge the gap between automatic translation tools and efficient storage. It specializes in converting "bloated" images from translators into ultra-optimized **AVIF** files without losing visual fidelity.
 
-![Manga Optimizer](https://raw.githubusercontent.com/cristian-guerrero/image-compressor/main/build/appicon.png)
+![Image Optimizer](https://raw.githubusercontent.com/cristian-guerrero/image-compressor/main/build/appicon.png)
 
 ## ✨ Features
 
@@ -11,7 +11,7 @@ Manga Optimizer is a high-performance desktop application designed to bridge the
 - **Smart AVIF Compression**: Uses the state-of-the-art AV1 codec for maximum space saving.
 - **Smart Decision Engine**: Automatically compares file sizes. If the optimized version isn't at least 15% smaller, the original file is preserved.
 - **Batch Processing**: Processes images in parallel and manages a sequential folder queue.
-- **Manga-Tuned Quality**: Optimized quality settings (Quality: 55, Speed: 8) specifically balanced for high-contrast drawings and text.
+- **Image-Tuned Quality**: Optimized quality settings (Quality: 55, Speed: 8) specifically balanced for high-contrast drawings and text.
 
 ## 🚀 Getting Started
 

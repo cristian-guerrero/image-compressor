@@ -30,7 +30,7 @@ type JobCard struct {
 func main() {
 	myApp := app.New()
 	myApp.Settings().SetTheme(theme.DarkTheme())
-	myWindow := myApp.NewWindow("Manga Optimizer - Fyne Edition")
+	myWindow := myApp.NewWindow("Image Optimizer - Fyne Edition")
 	myWindow.Resize(fyne.NewSize(600, 800))
 
 	var processor *ImageProcessor
