@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: write
+
 jobs:
   build-linux:
     runs-on: ubuntu-latest
@@ -52,8 +55,10 @@ jobs:
 
       - name: Build for Windows
         shell: msys2 {0}
+        env:
+          GOROOT: ${{ env.GOROOT_1_24_X64 }}
         run: |
-          export PATH="/mingw64/bin:$PATH"
+          export PATH="/mingw64/bin:$GOROOT/bin:$PATH"
           export CGO_ENABLED=1
           export GOOS=windows
           export GOARCH=amd64
@@ -65,3 +70,37 @@ jobs:
         with:
           name: image-compressor-windows-amd64
           path: image-compressor-windows-amd64.exe
+
+  release:
+    needs: [build-linux, build-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Generate release tag
+        id: tag
+        run: |
+          TAG="v$(date +'%Y.%m.%d')-${GITHUB_SHA::7}"
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: Release ${{ steps.tag.outputs.tag }}
+          body: |
+            Automated release from commit ${{ github.sha }}
+            
+            ## Downloads
+            - **Linux**: `image-compressor-linux-amd64`
+            - **Windows**: `image-compressor-windows-amd64.exe`
+          files: |
+            dist/image-compressor-linux-amd64/image-compressor-linux-amd64
+            dist/image-compressor-windows-amd64/image-compressor-windows-amd64.exe
+          draft: false
+          prerelease: false
