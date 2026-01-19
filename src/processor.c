@@ -15,6 +15,7 @@
     #include <windows.h>
     #include <shlobj.h>
     #include <direct.h>
+    #include <psapi.h>
     #define PATH_SEP '\\'
     #define PATH_SEP_STR "\\"
     #define my_mkdir(path) _mkdir(path)
@@ -221,6 +222,7 @@ static int compress_image_to_avif(const char *inputPath, const char *outputPath,
                                NULL);
     
     g_object_unref(image);
+    vips_error_clear(); // Clear any warnings or old errors
     
     if (result != 0) {
         fprintf(stderr, "Error saving AVIF: %s - %s\n", outputPath, vips_error_buffer());
@@ -355,6 +357,7 @@ void* image_worker(void *arg) {
         pthread_mutex_unlock(data->lock);
     }
     
+    vips_thread_shutdown();
     return NULL;
 }
 
@@ -477,6 +480,9 @@ int process_folder(FolderJob *job) {
         job->status = JOB_COMPLETED;
     }
     
+    // Force libvips to release all file handles from cache
+    vips_cache_drop_all();
+    
     printf("Job finished (status %d): %s\n", job->status, job->sourcePath);
     return 0;
 }
@@ -577,6 +583,9 @@ int process_folder(FolderJob *job) {
         job->status = JOB_COMPLETED;
     }
     
+    // Force libvips to release all file handles from cache
+    vips_cache_drop_all();
+    
     printf("Job finished (status %d): %s\n", job->status, job->sourcePath);
     return 0;
 }
@@ -628,4 +637,25 @@ char* pick_folder_dialog(void) {
     }
     
     return path;
+}
+
+long long get_process_ram_usage(void) {
+#ifdef _WIN32
+    PROCESS_MEMORY_COUNTERS pmc;
+    if (GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof(pmc))) {
+        return (long long)pmc.WorkingSetSize;
+    }
+    return 0;
+#else
+    // Basic Linux implementation using /proc/self/statm
+    long RSS = 0;
+    FILE* fp = fopen("/proc/self/statm", "r");
+    if (fp) {
+        if (fscanf(fp, "%*s%ld", &RSS) == 1) {
+            RSS *= sysconf(_SC_PAGESIZE);
+        }
+        fclose(fp);
+    }
+    return (long long)RSS;
+#endif
 }

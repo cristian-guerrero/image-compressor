@@ -64,4 +64,7 @@ void processor_sleep(int ms);
 // Caller must free the returned string
 char* pick_folder_dialog(void);
 
+// Get current process RAM usage (Working Set) in bytes
+long long get_process_ram_usage(void);
+
 #endif // PROCESSOR_H

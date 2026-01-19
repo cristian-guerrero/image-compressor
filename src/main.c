@@ -265,8 +265,13 @@ int main(void) {
             showHelp = true;
         }
         
-        // Memory indicator
-        DrawTextEx(guiFont, "libvips: ~50MB RAM", (Vector2){ (float)screenWidth - 190, 48 }, 14, 0, (Color){ 100, 220, 100, 255 });
+        // Memory indicator (Dynamic)
+        long long ramUsed = get_process_ram_usage();
+        const char *ramText = TextFormat("RAM: %lld MB", ramUsed / (1024 * 1024));
+        if (ramUsed > 1024LL * 1024LL * 1024LL) {
+            ramText = TextFormat("RAM: %.2f GB", (double)ramUsed / (1024.0 * 1024.0 * 1024.0));
+        }
+        DrawTextEx(guiFont, ramText, (Vector2){ (float)screenWidth - 190, 48 }, 14, 0, (ramUsed > 800LL*1024*1024) ? ORANGE : (Color){ 100, 220, 100, 255 });
         
         // Drop zone
         Rectangle dropZone = { 20, 85, screenWidth - 40, 70 };
@@ -459,7 +464,7 @@ int main(void) {
         }
         
         // Footer
-        DrawTextEx(guiFont, "v1.4 - raylib + libvips | UI Font: Cascadia Mono (Embedded)", (Vector2){ 20, (float)screenHeight - 22 }, 13, 0, DARKGRAY);
+        DrawTextEx(guiFont, "v1.6 - Diagnostic Build | UI Font: Cascadia Mono (Embedded)", (Vector2){ 20, (float)screenHeight - 22 }, 13, 0, DARKGRAY);
         
         // Help Dialog (top layer)
         if (showHelp) DrawHelpDialog(screenWidth, screenHeight, &showHelp);
