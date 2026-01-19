@@ -30,6 +30,9 @@ FolderJob* jobs[MAX_JOBS];
 volatile int jobCount = 0;
 pthread_mutex_t jobMutex = PTHREAD_MUTEX_INITIALIZER;
 
+// Global font
+Font guiFont;
+
 // Worker thread function
 void* JobWorker(void* arg) {
     printf("Worker: Thread started\n");
@@ -140,8 +143,8 @@ bool GuiButton(Rectangle bounds, const char *text, int fontSize, Color baseColor
     DrawRectangleRec(bounds, hovered ? ColorAlpha(baseColor, 0.8f) : baseColor);
     DrawRectangleLinesEx(bounds, 1, (Color){ 100, 100, 110, 255 });
     
-    int textWidth = MeasureText(text, fontSize);
-    DrawText(text, (int)(bounds.x + (bounds.width - textWidth)/2), (int)(bounds.y + (bounds.height - fontSize)/2), fontSize, WHITE);
+    Vector2 textSize = MeasureTextEx(guiFont, text, (float)fontSize, 0);
+    DrawTextEx(guiFont, text, (Vector2){ (float)bounds.x + (bounds.width - textSize.x)/2, (float)bounds.y + (bounds.height - textSize.y)/2 }, (float)fontSize, 0, WHITE);
     
     return clicked;
 }
@@ -152,22 +155,22 @@ void DrawHelpDialog(int screenWidth, int screenHeight, bool *showHelp) {
     DrawRectangleRec(modal, (Color){ 30, 30, 35, 250 });
     DrawRectangleLinesEx(modal, 2, (Color){ 80, 80, 90, 255 });
     
-    DrawText("Guía de Usuario / Help", (int)modal.x + 20, (int)modal.y + 20, 20, WHITE);
+    DrawTextEx(guiFont, "Guía de Usuario / Help", (Vector2){ (float)modal.x + 20, (float)modal.y + 20 }, 22, 0, WHITE);
     DrawRectangle((int)modal.x + 20, (int)modal.y + 45, (int)modal.width - 40, 1, GRAY);
     
     int y = (int)modal.y + 60;
-    DrawText("Ajustes de Compresión:", 70, y, 15, YELLOW); y += 20;
-    DrawText("- Calidad: Fidelidad visual (55-65 recomendado).", 70, y, 13, LIGHTGRAY); y += 18;
-    DrawText("- Compresión (CPU): 0 (rápido) a 10 (mejor/lento).", 70, y, 13, LIGHTGRAY); y += 18;
-    DrawText("- Hilos: Imágenes procesadas a la vez (# de CPUs).", 70, y, 13, LIGHTGRAY); y += 30;
+    DrawTextEx(guiFont, "Ajustes de Compresión:", (Vector2){ 70, (float)y }, 16, 0, YELLOW); y += 22;
+    DrawTextEx(guiFont, "- Calidad: Fidelidad visual (55-65 recomendado).", (Vector2){ 70, (float)y }, 15, 0, LIGHTGRAY); y += 20;
+    DrawTextEx(guiFont, "- Compresión (CPU): 0 (rápido) a 10 (mejor/lento).", (Vector2){ 70, (float)y }, 15, 0, LIGHTGRAY); y += 20;
+    DrawTextEx(guiFont, "- Hilos: Imágenes procesadas a la vez (# de CPUs).", (Vector2){ 70, (float)y }, 15, 0, LIGHTGRAY); y += 35;
     
-    DrawText("Gestión de Procesos:", 70, y, 15, YELLOW); y += 20;
-    DrawText("- Pausar/Reanudar: Detiene/continúa el trabajo.", 70, y, 13, LIGHTGRAY); y += 18;
-    DrawText("- Parar: Cancela el trabajo definitivamente.", 70, y, 13, LIGHTGRAY); y += 18;
-    DrawText("- Eliminar: Quita el registro (disponible al terminar).", 70, y, 13, LIGHTGRAY); y += 35;
+    DrawTextEx(guiFont, "Gestión de Procesos:", (Vector2){ 70, (float)y }, 16, 0, YELLOW); y += 22;
+    DrawTextEx(guiFont, "- Pausar/Reanudar: Detiene/continúa el trabajo.", (Vector2){ 70, (float)y }, 15, 0, LIGHTGRAY); y += 20;
+    DrawTextEx(guiFont, "- Parar: Cancela el trabajo definitivamente.", (Vector2){ 70, (float)y }, 15, 0, LIGHTGRAY); y += 20;
+    DrawTextEx(guiFont, "- Eliminar: Quita el registro (disponible al terminar).", (Vector2){ 70, (float)y }, 15, 0, LIGHTGRAY); y += 38;
     
-    DrawText("Salida:", 70, y, 15, YELLOW); y += 20;
-    DrawText("- Crea una carpeta con sufijo '(compressed)'.", 70, y, 13, LIGHTGRAY);
+    DrawTextEx(guiFont, "Salida:", (Vector2){ 70, (float)y }, 16, 0, YELLOW); y += 22;
+    DrawTextEx(guiFont, "- Crea una carpeta con sufijo '(compressed)'.", (Vector2){ 70, (float)y }, 15, 0, LIGHTGRAY);
     
     if (GuiButton((Rectangle){ modal.x + modal.width - 100, modal.y + modal.height - 40, 80, 25 }, "Cerrar", 13, (Color){ 80, 40, 40, 255 })) {
         *showHelp = false;
@@ -188,6 +191,15 @@ int main(void) {
     
     InitWindow(screenWidth, screenHeight, "Manga Optimizer - AVIF Compressor");
     SetTargetFPS(60);
+
+    // Load custom font
+    guiFont = LoadFontEx("resources/font.ttf", 64, 0, 250);
+    if (guiFont.texture.id == 0) {
+        printf("WARNING: Failed to load custom font, using default\n");
+        guiFont = GetFontDefault();
+    } else {
+        SetTextureFilter(guiFont.texture, TEXTURE_FILTER_BILINEAR);
+    }
     
     // Get CPU count for thread limit
     int maxThreads = get_cpu_count();
@@ -244,8 +256,8 @@ int main(void) {
         
         // Title bar
         DrawRectangle(0, 0, screenWidth, 70, (Color){ 35, 35, 42, 255 });
-        DrawText("Manga Optimizer", 20, 15, 28, WHITE);
-        DrawText("AVIF Smart Compression - Low Memory Mode", 20, 48, 14, (Color){ 150, 150, 160, 255 });
+        DrawTextEx(guiFont, "Manga Optimizer", (Vector2){ 20, 15 }, 28, 0, WHITE);
+        DrawTextEx(guiFont, "AVIF Smart Compression - Low Memory Mode", (Vector2){ 20, 48 }, 16, 0, (Color){ 150, 150, 160, 255 });
         
         // Help button in header
         if (GuiButton((Rectangle){ (float)screenWidth - 50, 15, 30, 30 }, "?", 18, (Color){ 60, 60, 70, 255 })) {
@@ -253,7 +265,7 @@ int main(void) {
         }
         
         // Memory indicator
-        DrawText("libvips: ~50MB RAM", screenWidth - 150, 48, 12, (Color){ 100, 200, 100, 255 });
+        DrawTextEx(guiFont, "libvips: ~50MB RAM", (Vector2){ (float)screenWidth - 190, 48 }, 14, 0, (Color){ 100, 220, 100, 255 });
         
         // Drop zone
         Rectangle dropZone = { 20, 85, screenWidth - 40, 70 };
@@ -275,37 +287,37 @@ int main(void) {
         }
 
         const char *dropText = "Click o arrastra carpetas aqui / Click or Drop folders here";
-        int textWidth = MeasureText(dropText, 18);
-        DrawText(dropText, (int)(dropZone.x + (dropZone.width - textWidth) / 2), (int)(dropZone.y + 26), 18, 
+        Vector2 dropTextSize = MeasureTextEx(guiFont, dropText, 20, 0);
+        DrawTextEx(guiFont, dropText, (Vector2){ (float)dropZone.x + (dropZone.width - dropTextSize.x) / 2, (float)dropZone.y + 25 }, 20, 0,
                  isDragging ? WHITE : (Color){ 180, 180, 190, 255 });
         
         // Settings panel
         DrawRectangle(15, 170, screenWidth - 30, 120, (Color){ 35, 35, 42, 255 });
         DrawRectangleLines(15, 170, screenWidth - 30, 120, (Color){ 50, 50, 58, 255 });
-        DrawText("Ajustes / Settings", 25, 178, 16, WHITE);
+        DrawTextEx(guiFont, "Ajustes / Settings", (Vector2){ 25, 178 }, 16, 0, WHITE);
         
         // Quality slider
-        DrawText(TextFormat("Calidad: %d", config.quality), 30, 205, 14, (Color){ 200, 200, 210, 255 });
-        config.quality = DrawSlider((Rectangle){ 180, 203, 200, 16 }, config.quality, 0, 100, (Color){ 80, 160, 80, 255 });
-        DrawText("(0=min, 100=max)", 390, 205, 12, GRAY);
+        DrawTextEx(guiFont, TextFormat("Calidad: %d", config.quality), (Vector2){ 30, 205 }, 16, 0, (Color){ 200, 200, 210, 255 });
+        config.quality = DrawSlider((Rectangle){ 200, 203, 180, 16 }, config.quality, 0, 100, (Color){ 80, 160, 80, 255 });
+        DrawTextEx(guiFont, "(0=min, 100=max)", (Vector2){ 400, 205 }, 14, 0, GRAY);
         
         // Speed/Effort slider
-        DrawText(TextFormat("Compresión (CPU): %d", config.speed), 30, 230, 14, (Color){ 200, 200, 210, 255 });
-        config.speed = DrawSlider((Rectangle){ 180, 228, 200, 16 }, config.speed, 0, 10, (Color){ 80, 140, 200, 255 });
-        DrawText("(0=rapido, 10=mejor)", 390, 230, 12, GRAY);
+        DrawTextEx(guiFont, TextFormat("Compresión (CPU): %d", config.speed), (Vector2){ 30, 230 }, 16, 0, (Color){ 200, 200, 210, 255 });
+        config.speed = DrawSlider((Rectangle){ 200, 228, 180, 16 }, config.speed, 0, 10, (Color){ 80, 140, 200, 255 });
+        DrawTextEx(guiFont, "(0=rapido, 10=mejor)", (Vector2){ 400, 230 }, 14, 0, GRAY);
         
         // Threads slider
-        DrawText(TextFormat("Hilos: %d", config.threads), 30, 255, 14, (Color){ 200, 200, 210, 255 });
-        config.threads = DrawSlider((Rectangle){ 180, 253, 200, 16 }, config.threads, 1, maxThreads, (Color){ 200, 140, 80, 255 });
-        DrawText(TextFormat("(max: %d CPUs)", maxThreads), 390, 255, 12, GRAY);
+        DrawTextEx(guiFont, TextFormat("Hilos: %d", config.threads), (Vector2){ 30, 255 }, 16, 0, (Color){ 200, 200, 210, 255 });
+        config.threads = DrawSlider((Rectangle){ 200, 253, 180, 16 }, config.threads, 1, maxThreads, (Color){ 200, 140, 80, 255 });
+        DrawTextEx(guiFont, TextFormat("(max: %d CPUs)", maxThreads), (Vector2){ 400, 255 }, 14, 0, GRAY);
         
         // Jobs panel
         DrawRectangle(15, 305, screenWidth - 30, 210, (Color){ 35, 35, 42, 255 });
         DrawRectangleLines(15, 305, screenWidth - 30, 210, (Color){ 50, 50, 58, 255 });
-        DrawText("Trabajos / Jobs", 25, 313, 16, WHITE);
+        DrawTextEx(guiFont, "Trabajos / Jobs", (Vector2){ 25, 313 }, 16, 0, WHITE);
         
         if (jobCount == 0) {
-            DrawText("No hay trabajos. Arrastra una carpeta para comenzar.", 40, 360, 14, GRAY);
+            DrawTextEx(guiFont, "No hay trabajos. Arrastra una carpeta para comenzar.", (Vector2){ 40, 360 }, 15, 0, GRAY);
             totalJobsHeight = 0;
         } else {
             // Recorte para el área de la lista (clipping)
@@ -368,10 +380,10 @@ int main(void) {
                 }
                 
                 // Row 1: Folder name
-                DrawText(displayPath, 35, yOffset, 14, WHITE);
+                DrawTextEx(guiFont, displayPath, (Vector2){ 35, (float)yOffset }, 16, 0, WHITE);
                 
                 // Row 2: Progress bar + details
-                int detailsY = yOffset + 20;
+                int detailsY = yOffset + 22;
                 Rectangle progressBar = { 35.0f, (float)(detailsY + 2), 400.0f, 10.0f };
                 
                 DrawRectangleRec(progressBar, (Color){ 45, 45, 50, 255 });
@@ -383,13 +395,13 @@ int main(void) {
                 
                 // Progress text
                 if (job->status == JOB_PROCESSING || job->status == JOB_STOPPING) {
-                    DrawText(TextFormat("%d/%d (Active: %d)", job->doneFiles, job->totalFiles, job->activeThreads), 430, detailsY, 13, LIGHTGRAY);
+                    DrawTextEx(guiFont, TextFormat("%d/%d (Threads: %d)", job->doneFiles, job->totalFiles, job->activeThreads), (Vector2){ 440, (float)detailsY }, 14, 0, LIGHTGRAY);
                 } else {
-                    DrawText(TextFormat("%d/%d", job->doneFiles, job->totalFiles), 450, detailsY, 13, LIGHTGRAY);
+                    DrawTextEx(guiFont, TextFormat("%d/%d", job->doneFiles, job->totalFiles), (Vector2){ 460, (float)detailsY }, 14, 0, LIGHTGRAY);
                 }
                 
                 // Status label
-                DrawText(statusText, screenWidth - 100, detailsY, 13, statusColor);
+                DrawTextEx(guiFont, statusText, (Vector2){ (float)screenWidth - 105, (float)detailsY }, 14, 0, statusColor);
                 
                 // Controls
                 int btnX = 490;
@@ -425,10 +437,10 @@ int main(void) {
                 
                 // Current file (if processing or paused)
                 if ((job->status == JOB_PROCESSING || job->status == JOB_PAUSED || job->status == JOB_STOPPING) && job->currentFile[0] != '\0') {
-                    DrawText(TextFormat("  > %s", job->currentFile), 35, detailsY + 16, 11, GRAY);
-                    yOffset += 60;
+                    DrawTextEx(guiFont, TextFormat("  > %s", job->currentFile), (Vector2){ 35, (float)detailsY + 18 }, 12, 0, GRAY);
+                    yOffset += 65;
                 } else {
-                    yOffset += 50;
+                    yOffset += 55;
                 }
             }
             pthread_mutex_unlock(&jobMutex);
@@ -446,7 +458,7 @@ int main(void) {
         }
         
         // Footer
-        DrawText("v1.0 - raylib + libvips | Cross-platform Windows/Linux", 20, screenHeight - 22, 11, DARKGRAY);
+        DrawTextEx(guiFont, "v1.3 - raylib + libvips | UI Font: Cascadia Mono (Optimized)", (Vector2){ 20, (float)screenHeight - 22 }, 13, 0, DARKGRAY);
         
         // Help Dialog (top layer)
         if (showHelp) DrawHelpDialog(screenWidth, screenHeight, &showHelp);
@@ -454,6 +466,7 @@ int main(void) {
         EndDrawing();
     }
     
+    UnloadFont(guiFont);
     CloseWindow();
     processor_shutdown();
     
