@@ -1,7 +1,15 @@
+# C build artifacts
+*.o
+*.exe
+compressor
+compressor_debug
+compressor_debug.exe
+
+# Legacy/Original Wails build
 build/bin
 node_modules
 frontend/dist
-image-compressor
 tmp
+image-compressor
 image-compressor-test
 image-compressor.exe

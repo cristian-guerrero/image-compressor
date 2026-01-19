@@ -7,10 +7,11 @@ Compresor de imágenes multiplataforma usando **raylib** para GUI/drag-and-drop 
 - ✅ Drag & drop nativo (Windows, Linux, macOS)
 - ✅ Soporte Unicode/Japonés en nombres de carpetas
 - ✅ Compresión AVIF con **~50MB RAM** (vs ~10GB en la versión Go)
-- ✅ Procesamiento en segundo plano con threads
+- ✅ Procesamiento en segundo plano con threads (handshake seguro)
+- ✅ Pausa/Resume, Stop y limpieza de trabajos
 - ✅ Smart compression (mantiene original si AVIF es más grande)
-- ✅ Sliders interactivos para calidad/velocidad
-
+- ✅ Sliders interactivos para calidad/velocidad e hilos
+- ✅ Guía de usuario integrada ("?" en cabecera)
 ## Requisitos
 
 ### Windows (MSYS2 MinGW64)
@@ -48,13 +49,32 @@ sudo dnf install raylib-devel vips-devel libheif-devel
 ```bash
 chmod +x build_linux.sh
 ./build_linux.sh
+
+### Perfil Debug (Windows)
+Para ver logs detallados y consola:
+```cmd
+./build_debug.bat
+```
 ```
 
 ## Ejecutar
 
 ```bash
-# Windows
-./compressor.exe
+# C build artifacts
+*.o
+*.exe
+compressor
+compressor_debug
+compressor_debug.exe
+
+# Legacy/Original Wails build
+build/bin
+node_modules
+frontend/dist
+tmp
+image-compressor
+image-compressor-test
+image-compressor.exebug.exe
 
 # Linux
 ./compressor
@@ -71,12 +91,16 @@ chmod +x build_linux.sh
 ## Estructura
 
 ```
-image-compressor-c/
-├── main.c           # GUI raylib + threads
-├── processor.c      # Compresión libvips
-├── processor.h      # API del procesador
-├── build_win.bat    # Build Windows
-├── build_linux.sh   # Build Linux
+image-compressor/
+├── src/
+│   ├── main.c           # GUI raylib + controls
+│   └── processor.c      # Compresión libvips
+├── include/
+│   └── processor.h      # API del procesador
+├── build_win.bat        # Build Windows Release (quiet)
+├── build_debug.bat      # Build Windows Debug (console)
+├── build_linux.sh       # Build Linux
+├── go-legacy/           # Código original en Go (Wails)
 └── README.md
 ```
 
