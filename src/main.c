@@ -320,7 +320,7 @@ int main(void) {
         // Jobs panel
         DrawRectangle(15, 305, screenWidth - 30, 210, (Color){ 35, 35, 42, 255 });
         DrawRectangleLines(15, 305, screenWidth - 30, 210, (Color){ 50, 50, 58, 255 });
-        DrawTextEx(guiFont, "Trabajos / Jobs", (Vector2){ 25, 313 }, 16, 0, WHITE);
+        DrawTextEx(guiFont, TextFormat("Trabajos / Jobs (%d)", jobCount), (Vector2){ 25, 313 }, 16, 0, WHITE);
         
         if (jobCount == 0) {
             DrawTextEx(guiFont, "No hay trabajos. Arrastra una carpeta para comenzar.", (Vector2){ 40, 360 }, 15, 0, GRAY);
@@ -434,10 +434,9 @@ int main(void) {
                         }
                         jobCount--;
                         free(jobToFree);
-                        pthread_mutex_unlock(&jobMutex);
-                        // No break here so we can update totalJobsHeight correctly
-                        i--; // Re-check current index
-                        continue;
+                        // Break to avoid double-triggering buttons in the same frame
+                        // Mutex will be unlocked by the call at the end of the loop scope
+                        break;
                     }
                 }
                 
@@ -464,7 +463,7 @@ int main(void) {
         }
         
         // Footer
-        DrawTextEx(guiFont, "v1.6 - Diagnostic Build | UI Font: Cascadia Mono (Embedded)", (Vector2){ 20, (float)screenHeight - 22 }, 13, 0, DARKGRAY);
+        DrawTextEx(guiFont, "v1.8 - raylib + libvips | UI Font: Cascadia Mono (Embedded)", (Vector2){ 20, (float)screenHeight - 22 }, 13, 0, DARKGRAY);
         
         // Help Dialog (top layer)
         if (showHelp) DrawHelpDialog(screenWidth, screenHeight, &showHelp);
