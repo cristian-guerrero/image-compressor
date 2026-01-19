@@ -13,3 +13,5 @@ tmp
 image-compressor
 image-compressor-test
 image-compressor.exe
+compressor.exe
+compressor_debug.exe
