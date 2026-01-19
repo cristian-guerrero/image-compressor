@@ -83,8 +83,29 @@ static int is_supported_image(const char *filename) {
     return 0;
 }
 
+// Output path: source + " (compressed)"
 void get_output_folder_path(const char *inputPath, char *outputPath, int maxLen) {
     snprintf(outputPath, maxLen, "%s (compressed)", inputPath);
+}
+
+// Get the number of logical CPU cores available
+int get_cpu_count(void) {
+#ifdef _WIN32
+    SYSTEM_INFO si;
+    GetSystemInfo(&si);
+    return (int)si.dwNumberOfProcessors;
+#else
+    return (int)sysconf(_SC_NPROCESSORS_ONLN);
+#endif
+}
+
+// Sleep current thread
+void processor_sleep(int ms) {
+#ifdef _WIN32
+    Sleep(ms);
+#else
+    usleep(ms * 1000);
+#endif
 }
 
 // Check if a path is a directory - works with unicode paths on Windows

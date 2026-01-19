@@ -41,7 +41,7 @@ if %ERRORLEVEL% NEQ 0 (
 
 echo Step 3: Linking...
 for /f "delims=" %%i in ('pkg-config --libs vips') do set VIPS_LIBS=%%i
-gcc main.o processor.o -o compressor.exe %VIPS_LIBS% -lraylib -lgdi32 -lwinmm -lopengl32
+gcc main.o processor.o -o compressor.exe %VIPS_LIBS% -lraylib -lgdi32 -lwinmm -lopengl32 -lpthread
 if %ERRORLEVEL% NEQ 0 (
     echo ERROR: Failed to link
     exit /b 1

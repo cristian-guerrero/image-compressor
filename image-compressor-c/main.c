@@ -12,23 +12,62 @@
  *   gcc main.c processor.c -o compressor $(pkg-config --cflags --libs vips) -lraylib -lGL -lm -lpthread -ldl -lrt -lX11
  */
 
+#ifndef MAIN_C_HEADERS
+#define MAIN_C_HEADERS
 #include "raylib.h"
 #include "processor.h"
 #include <stdio.h>
 #include <string.h>
+#include <pthread.h>
+#include <stdlib.h>
+#include <stdbool.h>
+#endif
 
 #define MAX_JOBS 32
 
 // Global job list
 FolderJob jobs[MAX_JOBS];
-int jobCount = 0;
+volatile int jobCount = 0;
+pthread_mutex_t jobMutex = PTHREAD_MUTEX_INITIALIZER;
+
+// Worker thread function
+void* JobWorker(void* arg) {
+    printf("Worker: Thread started\n");
+    while (true) {
+        FolderJob* currentJob = NULL;
+
+        pthread_mutex_lock(&jobMutex);
+        for (int i = 0; i < jobCount; i++) {
+            if (jobs[i].status == JOB_PENDING) {
+                currentJob = &jobs[i];
+                // Mark as processing immediately to avoid double-processing
+                currentJob->status = JOB_PROCESSING;
+                printf("Worker: Starting job for %s\n", currentJob->sourcePath);
+                break;
+            }
+        }
+        pthread_mutex_unlock(&jobMutex);
+
+        if (currentJob) {
+            process_folder(currentJob);
+        } else {
+            // No jobs, sleep a bit to avoid CPU spin
+            processor_sleep(500); 
+        }
+    }
+    return NULL;
+}
 
 // Use check_is_directory from processor.c (handles unicode paths on Windows)
 #define IsPathDirectory check_is_directory
 
 // Add a folder to the job queue
 void AddFolder(const char *path, CompressionConfig *config) {
-    if (jobCount >= MAX_JOBS) return;
+    pthread_mutex_lock(&jobMutex);
+    if (jobCount >= MAX_JOBS) {
+        pthread_mutex_unlock(&jobMutex);
+        return;
+    }
     
     FolderJob *job = &jobs[jobCount];
     
@@ -41,6 +80,7 @@ void AddFolder(const char *path, CompressionConfig *config) {
         if (dir && strlen(dir) > 0) {
             strncpy(job->sourcePath, dir, sizeof(job->sourcePath) - 1);
         } else {
+            pthread_mutex_unlock(&jobMutex);
             return;
         }
     }
@@ -56,6 +96,8 @@ void AddFolder(const char *path, CompressionConfig *config) {
     job->config = *config;
     
     jobCount++;
+    printf("AddFolder: Added %s (jobCount: %d)\n", job->sourcePath, jobCount);
+    pthread_mutex_unlock(&jobMutex);
 }
 
 // Draw a styled slider and return new value
@@ -75,7 +117,8 @@ int DrawSlider(Rectangle bounds, int value, int minVal, int maxVal, Color barCol
         float mouseRatio = (GetMousePosition().x - bounds.x) / bounds.width;
         if (mouseRatio < 0) mouseRatio = 0;
         if (mouseRatio > 1) mouseRatio = 1;
-        value = minVal + (int)(mouseRatio * (maxVal - minVal));
+        // Use rounding instead of truncation for accurate slider values
+        value = minVal + (int)(mouseRatio * (maxVal - minVal) + 0.5f);
     }
     
     return value;
@@ -96,11 +139,24 @@ int main(void) {
     InitWindow(screenWidth, screenHeight, "Manga Optimizer - AVIF Compressor");
     SetTargetFPS(60);
     
+    // Get CPU count for thread limit
+    int maxThreads = get_cpu_count();
+    if (maxThreads < 1) maxThreads = 4;
+    if (maxThreads > 32) maxThreads = 32;
+    
+    // Start background worker thread
+    pthread_t workerThread;
+    if (pthread_create(&workerThread, NULL, JobWorker, NULL) != 0) {
+        TraceLog(LOG_ERROR, "Failed to create worker thread!");
+    } else {
+        pthread_detach(workerThread);
+    }
+
     // Settings
     CompressionConfig config = {
         .quality = 55,
         .speed = 8,
-        .threads = 4
+        .threads = maxThreads / 2 > 0 ? maxThreads / 2 : 1  // Default to half of CPU count
     };
     
     bool isDragging = false;
@@ -115,15 +171,6 @@ int main(void) {
             }
             
             UnloadDroppedFiles(droppedFiles);
-        }
-        
-        // Process pending jobs (synchronous for now - will block UI during processing)
-        for (int i = 0; i < jobCount; i++) {
-            if (jobs[i].status == JOB_PENDING) {
-                // Process this job
-                process_folder(&jobs[i]);
-                break;  // One job at a time
-            }
         }
         
         // Drawing
@@ -170,8 +217,8 @@ int main(void) {
         
         // Threads slider
         DrawText(TextFormat("Hilos: %d", config.threads), 30, 255, 14, (Color){ 200, 200, 210, 255 });
-        config.threads = DrawSlider((Rectangle){ 180, 253, 200, 16 }, config.threads, 1, 8, (Color){ 200, 140, 80, 255 });
-        DrawText("(imagenes simultaneas)", 390, 255, 12, GRAY);
+        config.threads = DrawSlider((Rectangle){ 180, 253, 200, 16 }, config.threads, 1, maxThreads, (Color){ 200, 140, 80, 255 });
+        DrawText(TextFormat("(max: %d CPUs)", maxThreads), 390, 255, 12, GRAY);
         
         // Jobs panel
         DrawRectangle(15, 305, screenWidth - 30, 210, (Color){ 35, 35, 42, 255 });
@@ -179,10 +226,11 @@ int main(void) {
         DrawText("Trabajos / Jobs", 25, 313, 16, WHITE);
         
         if (jobCount == 0) {
-            DrawText("No hay trabajos. Arrastra una carpeta para comenzar.", 30, 345, 14, GRAY);
+            DrawText("No hay trabajos. Arrastra una carpeta para comenzar.", 40, 360, 14, GRAY);
         } else {
-            int yOffset = 340;
-            for (int i = 0; i < jobCount && i < 5; i++) {
+            int yOffset = 345;
+            pthread_mutex_lock(&jobMutex);
+            for (int i = 0; i < jobCount && i < 4; i++) {
                 FolderJob *job = &jobs[i];
                 
                 // Get folder name (simple extraction)
@@ -190,7 +238,7 @@ int main(void) {
                 if (!folderName) folderName = strrchr(job->sourcePath, '/');
                 if (folderName) folderName++; else folderName = job->sourcePath;
                 
-                // Status
+                // Status mapping
                 const char *statusText = "Pending";
                 Color statusColor = YELLOW;
                 
@@ -208,12 +256,31 @@ int main(void) {
                     statusColor = (Color){ 200, 150, 100, 255 };
                 }
                 
-                // Folder name
-                DrawText(folderName, 30, yOffset, 14, WHITE);
+                // Folder name - Truncate and clean non-ASCII for display
+                // Wider truncation (approx match to progress bar width)
+                char displayPath[128];
+                int k = 0;
+                for (int j = 0; folderName[j] && k < 80; j++) {
+                    unsigned char c = (unsigned char)folderName[j];
+                    if (c < 128) displayPath[k++] = folderName[j];
+                    else if (k < 77) {
+                         displayPath[k++] = '.';
+                         while ((folderName[j+1] & 0xC0) == 0x80) j++;
+                    }
+                }
+                displayPath[k] = '\0';
+                if (strlen(folderName) > (size_t)k && k >= 80) {
+                    displayPath[77] = '.'; displayPath[78] = '.'; displayPath[79] = '.';
+                }
                 
-                // Progress bar
-                Rectangle progressBar = { 250, (float)(yOffset + 2), 200, 12 };
-                DrawRectangleRec(progressBar, (Color){ 50, 50, 55, 255 });
+                // Row 1: Folder name
+                DrawText(displayPath, 35, yOffset, 14, WHITE);
+                
+                // Row 2: Progress bar + details
+                int detailsY = yOffset + 20;
+                Rectangle progressBar = { 35.0f, (float)(detailsY + 2), 400.0f, 10.0f };
+                
+                DrawRectangleRec(progressBar, (Color){ 45, 45, 50, 255 });
                 if (job->totalFiles > 0) {
                     DrawRectangle((int)progressBar.x, (int)progressBar.y, 
                                  (int)(progressBar.width * job->progress / 100.0f), 
@@ -221,19 +288,20 @@ int main(void) {
                 }
                 
                 // Progress text
-                DrawText(TextFormat("%d/%d", job->doneFiles, job->totalFiles), 460, yOffset, 14, LIGHTGRAY);
+                DrawText(TextFormat("%d/%d", job->doneFiles, job->totalFiles), 450, detailsY, 13, LIGHTGRAY);
                 
-                // Status
-                DrawText(statusText, screenWidth - 100, yOffset, 14, statusColor);
+                // Status label
+                DrawText(statusText, screenWidth - 100, detailsY, 13, statusColor);
                 
                 // Current file (if processing)
                 if (job->status == JOB_PROCESSING && job->currentFile[0] != '\0') {
-                    DrawText(TextFormat("  > %s", job->currentFile), 30, yOffset + 18, 11, GRAY);
-                    yOffset += 18;
+                    DrawText(TextFormat("  > %s", job->currentFile), 35, detailsY + 16, 11, GRAY);
+                    yOffset += 55; // Enough space for next job
+                } else {
+                    yOffset += 45; // Standard space per job
                 }
-                
-                yOffset += 28;
             }
+            pthread_mutex_unlock(&jobMutex);
         }
         
         // Footer
@@ -242,7 +310,8 @@ int main(void) {
         EndDrawing();
     }
     
-    processor_shutdown();
     CloseWindow();
+    processor_shutdown();
+    
     return 0;
 }
