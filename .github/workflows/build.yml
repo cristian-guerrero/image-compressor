@@ -54,7 +54,7 @@ jobs:
           gcc -c src/processor.c -o processor.o $(pkg-config --cflags vips) -Iinclude -O2
           gcc -c src/main.c -o main.o -Iinclude -O2
           gcc main.o processor.o -o image-compressor-windows-amd64.exe \
-              $(pkg-config --libs vips) -lraylib -lgdi32 -lwinmm -lopengl32 -lpthread
+              $(pkg-config --libs vips) -lraylib -lgdi32 -lwinmm -lopengl32 -lpthread -mwindows
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
