@@ -59,4 +59,9 @@ int get_cpu_count(void);
 // Sleep current thread
 void processor_sleep(int ms);
 
+// Open a native folder picker dialog
+// Returns a dynamically allocated string with the path, or NULL if cancelled
+// Caller must free the returned string
+char* pick_folder_dialog(void);
+
 #endif // PROCESSOR_H

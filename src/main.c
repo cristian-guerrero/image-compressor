@@ -211,6 +211,8 @@ int main(void) {
     
     bool isDragging = false;
     bool showHelp = false;
+    float jobScrollY = 0.0f;
+    int totalJobsHeight = 0;
     
     while (!WindowShouldClose()) {
         // Check for dropped files/folders
@@ -222,6 +224,18 @@ int main(void) {
             }
             
             UnloadDroppedFiles(droppedFiles);
+        }
+        
+        // Handle scrolling if mouse is over the jobs panel
+        Rectangle jobsPanelRec = { 15, 305, (float)screenWidth - 30, 210 };
+        if (CheckCollisionPointRec(GetMousePosition(), jobsPanelRec)) {
+            jobScrollY += GetMouseWheelMove() * 30.0f;
+            
+            // Clamp scroll
+            int maxScroll = totalJobsHeight - 170; // 170 is approx visible height
+            if (maxScroll < 0) maxScroll = 0;
+            if (jobScrollY < -maxScroll) jobScrollY = -maxScroll;
+            if (jobScrollY > 0) jobScrollY = 0;
         }
         
         // Drawing
@@ -251,7 +265,16 @@ int main(void) {
         DrawRectangleRounded(dropZone, 0.1f, 8, dropBg);
         DrawRectangleRoundedLinesEx(dropZone, 0.1f, 8, 2.0f, dropBorder);
         
-        const char *dropText = "Arrastra carpetas aqui / Drop folders here";
+        // Click to open folder picker
+        if (isDragging && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+            char *pickedPath = pick_folder_dialog();
+            if (pickedPath) {
+                AddFolder(pickedPath, &config);
+                free(pickedPath);
+            }
+        }
+
+        const char *dropText = "Click o arrastra carpetas aqui / Click or Drop folders here";
         int textWidth = MeasureText(dropText, 18);
         DrawText(dropText, (int)(dropZone.x + (dropZone.width - textWidth) / 2), (int)(dropZone.y + 26), 18, 
                  isDragging ? WHITE : (Color){ 180, 180, 190, 255 });
@@ -283,12 +306,24 @@ int main(void) {
         
         if (jobCount == 0) {
             DrawText("No hay trabajos. Arrastra una carpeta para comenzar.", 40, 360, 14, GRAY);
+            totalJobsHeight = 0;
         } else {
-            int yOffset = 345;
+            // Recorte para el área de la lista (clipping)
+            BeginScissorMode(16, 335, screenWidth - 32, 175);
+            
+            int yOffset = 345 + (int)jobScrollY;
+            int startY = yOffset;
+            
             pthread_mutex_lock(&jobMutex);
-            for (int i = 0; i < jobCount && i < 4; i++) {
+            for (int i = 0; i < jobCount; i++) {
                 FolderJob *job = jobs[i];
                 if (!job) continue;
+                
+                // Skip rendering if far outside view for performance (optional)
+                if (yOffset > 550) { 
+                    yOffset += 60; 
+                    continue; 
+                }
                 
                 // Get folder name (simple extraction)
                 const char *folderName = strrchr(job->sourcePath, '\\');
@@ -317,7 +352,6 @@ int main(void) {
                 }
                 
                 // Folder name - Truncate and clean non-ASCII for display
-                // Wider truncation (approx match to progress bar width)
                 char displayPath[128];
                 int k = 0;
                 for (int j = 0; folderName[j] && k < 80; j++) {
@@ -376,7 +410,6 @@ int main(void) {
                 } else {
                     // Delete button - only if not processing
                     if (GuiButton((Rectangle){ (float)btnX + 60, (float)detailsY - 2, 45, 20 }, "Del", 11, (Color){ 100, 40, 40, 255 })) {
-                        // Delete job: free memory and shift pointers
                         FolderJob* jobToFree = jobs[i];
                         for (int j = i; j < jobCount - 1; j++) {
                             jobs[j] = jobs[j+1];
@@ -384,19 +417,32 @@ int main(void) {
                         jobCount--;
                         free(jobToFree);
                         pthread_mutex_unlock(&jobMutex);
-                        break; // Exit loop, next frame will redraw correctly
+                        // No break here so we can update totalJobsHeight correctly
+                        i--; // Re-check current index
+                        continue;
                     }
                 }
                 
                 // Current file (if processing or paused)
                 if ((job->status == JOB_PROCESSING || job->status == JOB_PAUSED || job->status == JOB_STOPPING) && job->currentFile[0] != '\0') {
                     DrawText(TextFormat("  > %s", job->currentFile), 35, detailsY + 16, 11, GRAY);
-                    yOffset += 60; // Enough space for next job
+                    yOffset += 60;
                 } else {
-                    yOffset += 50; // Standard space per job
+                    yOffset += 50;
                 }
             }
             pthread_mutex_unlock(&jobMutex);
+            
+            EndScissorMode();
+            totalJobsHeight = yOffset - startY - (int)jobScrollY;
+            
+            // Draw visual scrollbar if needed
+            if (totalJobsHeight > 170) {
+                float scrollRatio = 170.0f / (float)totalJobsHeight;
+                float scrollThumbHeight = 170.0f * scrollRatio;
+                float scrollThumbY = 335.0f + (-jobScrollY / (float)totalJobsHeight) * 170.0f;
+                DrawRectangle(screenWidth - 12, (int)scrollThumbY, 4, (int)scrollThumbHeight, (Color){ 100, 100, 120, 255 });
+            }
         }
         
         // Footer

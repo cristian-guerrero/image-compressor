@@ -13,6 +13,7 @@
 #include <pthread.h>
 #ifdef _WIN32
     #include <windows.h>
+    #include <shlobj.h>
     #include <direct.h>
     #define PATH_SEP '\\'
     #define PATH_SEP_STR "\\"
@@ -50,6 +51,7 @@ static int create_dir_unicode(const char *path) {
 // Supported image extensions
 static const char *SUPPORTED_EXTENSIONS[] = {
     ".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".tiff", ".tif",
+    ".avif", ".heic", ".heif",
     NULL
 };
 
@@ -579,3 +581,51 @@ int process_folder(FolderJob *job) {
     return 0;
 }
 #endif
+
+char* pick_folder_dialog(void) {
+    char *path = (char *)malloc(1024);
+    if (!path) return NULL;
+    path[0] = '\0';
+
+#ifdef _WIN32
+    BROWSEINFOW bi = { 0 };
+    bi.lpszTitle = L"Selecciona una carpeta / Select a folder";
+    bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE | BIF_USENEWUI;
+    
+    LPITEMIDLIST pidl = SHBrowseForFolderW(&bi);
+    if (pidl != NULL) {
+        wchar_t widePath[MAX_PATH];
+        if (SHGetPathFromIDListW(pidl, widePath)) {
+            wide_to_utf8(widePath, path, 1024);
+        }
+        
+        IMalloc *imalloc = NULL;
+        if (SUCCEEDED(SHGetMalloc(&imalloc))) {
+            imalloc->lpVtbl->Free(imalloc, pidl);
+            imalloc->lpVtbl->Release(imalloc);
+        }
+    }
+#else
+    // Linux/macOS: Try zenity, then kdialog
+    FILE *pipe = popen("zenity --file-selection --directory --title=\"Selecciona una carpeta\" 2>/dev/null", "r");
+    if (!pipe) pipe = popen("kdialog --getexistingdirectory . 2>/dev/null", "r");
+    
+    if (!pipe) {
+        free(path);
+        return NULL;
+    }
+    
+    if (fgets(path, 1024, pipe) != NULL) {
+        size_t len = strlen(path);
+        if (len > 0 && path[len-1] == '\n') path[len-1] = '\0';
+    }
+    pclose(pipe);
+#endif
+
+    if (strlen(path) == 0) {
+        free(path);
+        return NULL;
+    }
+    
+    return path;
+}
