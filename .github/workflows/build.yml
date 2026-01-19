@@ -21,8 +21,9 @@ jobs:
       - name: Build for Linux
         run: |
           cd image-compressor-c
-          gcc main.c processor.c -o ../image-compressor-linux-amd64 \
+          gcc src/main.c src/processor.c -o ../image-compressor-linux-amd64 \
               $(pkg-config --cflags --libs vips) \
+              -Iinclude \
               -lraylib -lGL -lm -lpthread -ldl -lrt -lX11 \
               -O2
 
@@ -52,8 +53,8 @@ jobs:
         shell: msys2 {0}
         run: |
           cd image-compressor-c
-          gcc -c processor.c -o processor.o $(pkg-config --cflags vips) -O2
-          gcc -c main.c -o main.o -O2
+          gcc -c src/processor.c -o processor.o $(pkg-config --cflags vips) -Iinclude -O2
+          gcc -c src/main.c -o main.o -Iinclude -O2
           gcc main.o processor.o -o ../image-compressor-windows-amd64.exe \
               $(pkg-config --libs vips) -lraylib -lgdi32 -lwinmm -lopengl32 -lpthread
 

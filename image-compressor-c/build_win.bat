@@ -26,14 +26,14 @@ if %ERRORLEVEL% NEQ 0 (
 
 echo Step 1: Compiling processor.c (libvips)...
 for /f "delims=" %%i in ('pkg-config --cflags vips') do set VIPS_CFLAGS=%%i
-gcc -c processor.c -o processor.o %VIPS_CFLAGS% -O2
+gcc -c src/processor.c -o processor.o %VIPS_CFLAGS% -Iinclude -O2
 if %ERRORLEVEL% NEQ 0 (
     echo ERROR: Failed to compile processor.c
     exit /b 1
 )
 
 echo Step 2: Compiling main.c (raylib only)...
-gcc -c main.c -o main.o -O2
+gcc -c src/main.c -o main.o -Iinclude -O2
 if %ERRORLEVEL% NEQ 0 (
     echo ERROR: Failed to compile main.c
     exit /b 1

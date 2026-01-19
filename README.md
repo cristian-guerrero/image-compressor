@@ -1,61 +1,94 @@
-# Manga Optimizer ⛩️
+# Image Compressor - C Implementation
 
-Manga Optimizer is a high-performance desktop application designed to bridge the gap between automatic translation tools and efficient storage. It specializes in converting "bloated" images from translators into ultra-optimized **AVIF** files without losing visual fidelity.
+Compresor de imágenes multiplataforma usando **raylib** para GUI/drag-and-drop y **libvips** para compresión AVIF eficiente en memoria.
 
-![Manga Optimizer](https://raw.githubusercontent.com/cristian-guerrero/image-compressor/main/build/appicon.png)
+## Características
 
-## ✨ Features
+- ✅ Drag & drop nativo (Windows, Linux, macOS)
+- ✅ Soporte Unicode/Japonés en nombres de carpetas
+- ✅ Compresión AVIF con **~50MB RAM** (vs ~10GB en la versión Go)
+- ✅ Procesamiento en segundo plano con threads
+- ✅ Smart compression (mantiene original si AVIF es más grande)
+- ✅ Sliders interactivos para calidad/velocidad
 
-- **Native Go Performance**: Built with Go and Fyne for a fast, resource-efficient experience. No heavy browser engines.
-- **Stable Drag & Drop**: Robust support for dragging folders and files directly from your Linux file manager.
-- **Smart AVIF Compression**: Uses the state-of-the-art AV1 codec for maximum space saving.
-- **Smart Decision Engine**: Automatically compares file sizes. If the optimized version isn't at least 15% smaller, the original file is preserved.
-- **Batch Processing**: Processes images in parallel and manages a sequential folder queue.
-- **Manga-Tuned Quality**: Optimized quality settings (Quality: 55, Speed: 8) specifically balanced for high-contrast drawings and text.
+## Requisitos
 
-## 🚀 Getting Started
-
-### Prerequisites (Linux)
-
-To compile and run the application, you need the following system libraries:
+### Windows (MSYS2 MinGW64)
 
 ```bash
-sudo apt-get update && sudo apt-get install -y libgl1-mesa-dev xorg-dev libxxf86vm-dev
+# En MSYS2 MINGW64 terminal:
+pacman -S mingw-w64-x86_64-gcc
+pacman -S mingw-w64-x86_64-pkg-config
+pacman -S mingw-w64-x86_64-raylib
+pacman -S mingw-w64-x86_64-libvips
+pacman -S mingw-w64-x86_64-libheif  # Required for AVIF support
 ```
 
-- [Go](https://golang.org/dl/) (1.18 or later)
-
-### Development
-
-We use [Air](https://github.com/air-verse/air) for live-reloading during development:
+### Linux
 
 ```bash
-# Install Air
-go install github.com/air-verse/air@latest
+# Ubuntu/Debian
+sudo apt install build-essential pkg-config libraylib-dev libvips-dev libheif-dev
 
-# Run with live reload
-air
+# Arch Linux
+sudo pacman -S raylib libvips libheif
+
+# Fedora
+sudo dnf install raylib-devel vips-devel libheif-devel
 ```
 
-### Building for Production
+## Compilar
 
-To create a standalone executable:
+### Windows (desde MSYS2 MINGW64)
+```cmd
+./build_win.bat
+```
+
+### Linux
+```bash
+chmod +x build_linux.sh
+./build_linux.sh
+```
+
+## Ejecutar
 
 ```bash
-go build -o image-compressor .
+# Windows
+./compressor.exe
+
+# Linux
+./compressor
 ```
-```powershell
- go build -ldflags "-H windowsgui" -o image-compressor.exe .
+
+## Uso
+
+1. Ejecuta la aplicación
+2. Ajusta calidad (0-100), velocidad (0-10) y threads (1-8)
+3. Arrastra carpetas con imágenes a la ventana
+4. Las imágenes se comprimen a AVIF automáticamente
+5. Output: carpeta original + " (compressed)"
+
+## Estructura
+
 ```
-## 🛠️ Technology Stack
+image-compressor-c/
+├── main.c           # GUI raylib + threads
+├── processor.c      # Compresión libvips
+├── processor.h      # API del procesador
+├── build_win.bat    # Build Windows
+├── build_linux.sh   # Build Linux
+└── README.md
+```
 
-- **Backend & UI**: Go (Golang) + [Fyne](https://fyne.io/)
-- **Live Reload**: Air
-- **Image Processing**: 
-  - `github.com/gen2brain/avif` (AV1/AVIF)
-  - `golang.org/x/image/webp` (WebP)
-  - Standard `image` package for JPEG/PNG
+## Comparación de Memoria
 
-## 📜 License
+| Escenario | Go + gen2brain/avif | C + libvips |
+|-----------|---------------------|-------------|
+| 1 imagen 4K | ~150 MB | ~15 MB |
+| 8 imágenes simultáneas | ~1.2 GB | ~120 MB |
+| Pico máximo observado | ~10 GB | ~200 MB |
 
-This project is open-source. Feel free to contribute!
+## Formatos Soportados
+
+- Entrada: JPG, JPEG, PNG, WebP, AVIF, GIF, BMP, TIFF
+- Salida: AVIF (o copia del original si AVIF no reduce tamaño)

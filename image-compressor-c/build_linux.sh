@@ -30,8 +30,9 @@ echo "VIPS_CFLAGS: $(pkg-config --cflags vips)"
 echo "VIPS_LIBS:   $(pkg-config --libs vips)"
 echo ""
 
-gcc main.c processor.c -o compressor \
+gcc src/main.c src/processor.c -o compressor \
     $(pkg-config --cflags --libs vips) \
+    -Iinclude \
     -lraylib -lGL -lm -lpthread -ldl -lrt -lX11 \
     -O2
 
