@@ -13,19 +13,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.24'
-
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgl1-mesa-dev xorg-dev libavif-dev
+          sudo apt-get install -y libgl1-mesa-dev xorg-dev libvips-dev libraylib-dev pkg-config
 
       - name: Build for Linux
         run: |
-          CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -o image-compressor-linux-amd64 .
+          cd image-compressor-c
+          gcc main.c processor.c -o ../image-compressor-linux-amd64 \
+              $(pkg-config --cflags --libs vips) \
+              -lraylib -lGL -lm -lpthread -ldl -lrt -lX11 \
+              -O2
 
       - name: Upload Linux artifact
         uses: actions/upload-artifact@v4
@@ -38,11 +37,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.24'
-
       - name: Install MSYS2 and dependencies
         uses: msys2/setup-msys2@v2
         with:
@@ -51,15 +45,17 @@ jobs:
           install: >-
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-pkg-config
-            mingw-w64-x86_64-libavif
+            mingw-w64-x86_64-libvips
+            mingw-w64-x86_64-raylib
 
       - name: Build for Windows
-        shell: pwsh
+        shell: msys2 {0}
         run: |
-          $env:PATH = "D:\a\_temp\msys64\mingw64\bin;$env:PATH"
-          $env:CGO_ENABLED = "1"
-          $env:CC = "gcc"
-          go build -ldflags="-H windowsgui" -o image-compressor-windows-amd64.exe .
+          cd image-compressor-c
+          gcc -c processor.c -o processor.o $(pkg-config --cflags vips) -O2
+          gcc -c main.c -o main.o -O2
+          gcc main.o processor.o -o ../image-compressor-windows-amd64.exe \
+              $(pkg-config --libs vips) -lraylib -lgdi32 -lwinmm -lopengl32 -lpthread
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
@@ -90,7 +86,7 @@ jobs:
           tag_name: ${{ steps.tag.outputs.tag }}
           name: Release ${{ steps.tag.outputs.tag }}
           body: |
-            Automated release from commit ${{ github.sha }}
+            Automated release from commit ${{ github.sha }} (C Rewrite)
             
             ## Downloads
             - **Linux**: `image-compressor-linux-amd64`
