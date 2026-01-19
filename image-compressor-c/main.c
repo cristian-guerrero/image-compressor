@@ -1,0 +1,248 @@
+/*
+ * Image Compressor - Raylib GUI
+ * Cross-platform: Windows, Linux, macOS
+ * 
+ * This file ONLY uses raylib, never vips directly.
+ * The processor.c file handles all vips operations.
+ * 
+ * Build (Windows MSYS2):
+ *   gcc main.c processor.c -o compressor.exe $(pkg-config --cflags --libs vips) -lraylib -lgdi32 -lwinmm -lopengl32
+ * 
+ * Build (Linux):
+ *   gcc main.c processor.c -o compressor $(pkg-config --cflags --libs vips) -lraylib -lGL -lm -lpthread -ldl -lrt -lX11
+ */
+
+#include "raylib.h"
+#include "processor.h"
+#include <stdio.h>
+#include <string.h>
+
+#define MAX_JOBS 32
+
+// Global job list
+FolderJob jobs[MAX_JOBS];
+int jobCount = 0;
+
+// Use check_is_directory from processor.c (handles unicode paths on Windows)
+#define IsPathDirectory check_is_directory
+
+// Add a folder to the job queue
+void AddFolder(const char *path, CompressionConfig *config) {
+    if (jobCount >= MAX_JOBS) return;
+    
+    FolderJob *job = &jobs[jobCount];
+    
+    // Use the path directly - if user drops a folder, use that folder
+    // If user drops a file, use the file's directory
+    if (IsPathDirectory(path)) {
+        strncpy(job->sourcePath, path, sizeof(job->sourcePath) - 1);
+    } else {
+        const char *dir = GetDirectoryPath(path);
+        if (dir && strlen(dir) > 0) {
+            strncpy(job->sourcePath, dir, sizeof(job->sourcePath) - 1);
+        } else {
+            return;
+        }
+    }
+    
+    // Set output path
+    get_output_folder_path(job->sourcePath, job->outputPath, sizeof(job->outputPath));
+    
+    job->status = JOB_PENDING;
+    job->progress = 0;
+    job->totalFiles = 0;
+    job->doneFiles = 0;
+    job->currentFile[0] = '\0';
+    job->config = *config;
+    
+    jobCount++;
+}
+
+// Draw a styled slider and return new value
+int DrawSlider(Rectangle bounds, int value, int minVal, int maxVal, Color barColor) {
+    // Background
+    DrawRectangleRec(bounds, (Color){ 50, 50, 55, 255 });
+    
+    // Fill
+    float ratio = (float)(value - minVal) / (float)(maxVal - minVal);
+    DrawRectangle((int)bounds.x, (int)bounds.y, (int)(bounds.width * ratio), (int)bounds.height, barColor);
+    
+    // Border
+    DrawRectangleLinesEx(bounds, 1, (Color){ 70, 70, 75, 255 });
+    
+    // Handle mouse input
+    if (IsMouseButtonDown(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(GetMousePosition(), bounds)) {
+        float mouseRatio = (GetMousePosition().x - bounds.x) / bounds.width;
+        if (mouseRatio < 0) mouseRatio = 0;
+        if (mouseRatio > 1) mouseRatio = 1;
+        value = minVal + (int)(mouseRatio * (maxVal - minVal));
+    }
+    
+    return value;
+}
+
+int main(void) {
+    // Initialize libvips first
+    if (!processor_init()) {
+        printf("ERROR: Failed to initialize libvips!\n");
+        printf("Make sure libvips is installed.\n");
+        return 1;
+    }
+    
+    // Initialize window
+    const int screenWidth = 700;
+    const int screenHeight = 550;
+    
+    InitWindow(screenWidth, screenHeight, "Manga Optimizer - AVIF Compressor");
+    SetTargetFPS(60);
+    
+    // Settings
+    CompressionConfig config = {
+        .quality = 55,
+        .speed = 8,
+        .threads = 4
+    };
+    
+    bool isDragging = false;
+    
+    while (!WindowShouldClose()) {
+        // Check for dropped files/folders
+        if (IsFileDropped()) {
+            FilePathList droppedFiles = LoadDroppedFiles();
+            
+            for (int i = 0; i < (int)droppedFiles.count; i++) {
+                AddFolder(droppedFiles.paths[i], &config);
+            }
+            
+            UnloadDroppedFiles(droppedFiles);
+        }
+        
+        // Process pending jobs (synchronous for now - will block UI during processing)
+        for (int i = 0; i < jobCount; i++) {
+            if (jobs[i].status == JOB_PENDING) {
+                // Process this job
+                process_folder(&jobs[i]);
+                break;  // One job at a time
+            }
+        }
+        
+        // Drawing
+        BeginDrawing();
+        ClearBackground((Color){ 25, 25, 30, 255 });
+        
+        // Title bar
+        DrawRectangle(0, 0, screenWidth, 70, (Color){ 35, 35, 42, 255 });
+        DrawText("Manga Optimizer", 20, 15, 28, WHITE);
+        DrawText("AVIF Smart Compression - Low Memory Mode", 20, 48, 14, (Color){ 150, 150, 160, 255 });
+        
+        // Memory indicator
+        DrawText("libvips: ~50MB RAM", screenWidth - 150, 48, 12, (Color){ 100, 200, 100, 255 });
+        
+        // Drop zone
+        Rectangle dropZone = { 20, 85, screenWidth - 40, 70 };
+        isDragging = CheckCollisionPointRec(GetMousePosition(), dropZone);
+        
+        Color dropBg = isDragging ? (Color){ 50, 90, 50, 255 } : (Color){ 40, 40, 48, 255 };
+        Color dropBorder = isDragging ? (Color){ 100, 200, 100, 255 } : (Color){ 70, 70, 80, 255 };
+        
+        DrawRectangleRounded(dropZone, 0.1f, 8, dropBg);
+        DrawRectangleRoundedLinesEx(dropZone, 0.1f, 8, 2.0f, dropBorder);
+        
+        const char *dropText = "Arrastra carpetas aqui / Drop folders here";
+        int textWidth = MeasureText(dropText, 18);
+        DrawText(dropText, (int)(dropZone.x + (dropZone.width - textWidth) / 2), (int)(dropZone.y + 26), 18, 
+                 isDragging ? WHITE : (Color){ 180, 180, 190, 255 });
+        
+        // Settings panel
+        DrawRectangle(15, 170, screenWidth - 30, 120, (Color){ 35, 35, 42, 255 });
+        DrawRectangleLines(15, 170, screenWidth - 30, 120, (Color){ 50, 50, 58, 255 });
+        DrawText("Ajustes / Settings", 25, 178, 16, WHITE);
+        
+        // Quality slider
+        DrawText(TextFormat("Calidad: %d", config.quality), 30, 205, 14, (Color){ 200, 200, 210, 255 });
+        config.quality = DrawSlider((Rectangle){ 180, 203, 200, 16 }, config.quality, 0, 100, (Color){ 80, 160, 80, 255 });
+        DrawText("(0=min, 100=max)", 390, 205, 12, GRAY);
+        
+        // Speed slider
+        DrawText(TextFormat("Velocidad: %d", config.speed), 30, 230, 14, (Color){ 200, 200, 210, 255 });
+        config.speed = DrawSlider((Rectangle){ 180, 228, 200, 16 }, config.speed, 0, 10, (Color){ 80, 140, 200, 255 });
+        DrawText("(0=lento, 10=rapido)", 390, 230, 12, GRAY);
+        
+        // Threads slider
+        DrawText(TextFormat("Hilos: %d", config.threads), 30, 255, 14, (Color){ 200, 200, 210, 255 });
+        config.threads = DrawSlider((Rectangle){ 180, 253, 200, 16 }, config.threads, 1, 8, (Color){ 200, 140, 80, 255 });
+        DrawText("(imagenes simultaneas)", 390, 255, 12, GRAY);
+        
+        // Jobs panel
+        DrawRectangle(15, 305, screenWidth - 30, 210, (Color){ 35, 35, 42, 255 });
+        DrawRectangleLines(15, 305, screenWidth - 30, 210, (Color){ 50, 50, 58, 255 });
+        DrawText("Trabajos / Jobs", 25, 313, 16, WHITE);
+        
+        if (jobCount == 0) {
+            DrawText("No hay trabajos. Arrastra una carpeta para comenzar.", 30, 345, 14, GRAY);
+        } else {
+            int yOffset = 340;
+            for (int i = 0; i < jobCount && i < 5; i++) {
+                FolderJob *job = &jobs[i];
+                
+                // Get folder name (simple extraction)
+                const char *folderName = strrchr(job->sourcePath, '\\');
+                if (!folderName) folderName = strrchr(job->sourcePath, '/');
+                if (folderName) folderName++; else folderName = job->sourcePath;
+                
+                // Status
+                const char *statusText = "Pending";
+                Color statusColor = YELLOW;
+                
+                if (job->status == JOB_PROCESSING) {
+                    statusText = "Processing";
+                    statusColor = (Color){ 100, 180, 255, 255 };
+                } else if (job->status == JOB_COMPLETED) {
+                    statusText = "Done";
+                    statusColor = (Color){ 100, 220, 100, 255 };
+                } else if (job->status == JOB_ERROR) {
+                    statusText = "Error";
+                    statusColor = (Color){ 255, 100, 100, 255 };
+                } else if (job->status == JOB_STOPPED) {
+                    statusText = "Stopped";
+                    statusColor = (Color){ 200, 150, 100, 255 };
+                }
+                
+                // Folder name
+                DrawText(folderName, 30, yOffset, 14, WHITE);
+                
+                // Progress bar
+                Rectangle progressBar = { 250, (float)(yOffset + 2), 200, 12 };
+                DrawRectangleRec(progressBar, (Color){ 50, 50, 55, 255 });
+                if (job->totalFiles > 0) {
+                    DrawRectangle((int)progressBar.x, (int)progressBar.y, 
+                                 (int)(progressBar.width * job->progress / 100.0f), 
+                                 (int)progressBar.height, statusColor);
+                }
+                
+                // Progress text
+                DrawText(TextFormat("%d/%d", job->doneFiles, job->totalFiles), 460, yOffset, 14, LIGHTGRAY);
+                
+                // Status
+                DrawText(statusText, screenWidth - 100, yOffset, 14, statusColor);
+                
+                // Current file (if processing)
+                if (job->status == JOB_PROCESSING && job->currentFile[0] != '\0') {
+                    DrawText(TextFormat("  > %s", job->currentFile), 30, yOffset + 18, 11, GRAY);
+                    yOffset += 18;
+                }
+                
+                yOffset += 28;
+            }
+        }
+        
+        // Footer
+        DrawText("v1.0 - raylib + libvips | Cross-platform Windows/Linux", 20, screenHeight - 22, 11, DARKGRAY);
+        
+        EndDrawing();
+    }
+    
+    processor_shutdown();
+    CloseWindow();
+    return 0;
+}
