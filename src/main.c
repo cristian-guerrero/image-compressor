@@ -25,8 +25,8 @@
 
 #define MAX_JOBS 32
 
-// Global job list
-FolderJob jobs[MAX_JOBS];
+// Global job list - array of pointers for memory stability
+FolderJob* jobs[MAX_JOBS];
 volatile int jobCount = 0;
 pthread_mutex_t jobMutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -38,8 +38,8 @@ void* JobWorker(void* arg) {
 
         pthread_mutex_lock(&jobMutex);
         for (int i = 0; i < jobCount; i++) {
-            if (jobs[i].status == JOB_PENDING) {
-                currentJob = &jobs[i];
+            if (jobs[i] && jobs[i]->status == JOB_PENDING) {
+                currentJob = jobs[i];
                 // Mark as processing immediately to avoid double-processing
                 currentJob->status = JOB_PROCESSING;
                 printf("Worker: Starting job for %s\n", currentJob->sourcePath);
@@ -69,7 +69,14 @@ void AddFolder(const char *path, CompressionConfig *config) {
         return;
     }
     
-    FolderJob *job = &jobs[jobCount];
+    FolderJob *job = (FolderJob*)malloc(sizeof(FolderJob));
+    if (!job) {
+        pthread_mutex_unlock(&jobMutex);
+        return;
+    }
+    memset(job, 0, sizeof(FolderJob));
+    
+    jobs[jobCount] = job;
     
     // Use the path directly - if user drops a folder, use that folder
     // If user drops a file, use the file's directory
@@ -124,6 +131,49 @@ int DrawSlider(Rectangle bounds, int value, int minVal, int maxVal, Color barCol
     return value;
 }
 
+// Simple button helper
+bool GuiButton(Rectangle bounds, const char *text, int fontSize, Color baseColor) {
+    Vector2 mouse = GetMousePosition();
+    bool hovered = CheckCollisionPointRec(mouse, bounds);
+    bool clicked = hovered && IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
+    
+    DrawRectangleRec(bounds, hovered ? ColorAlpha(baseColor, 0.8f) : baseColor);
+    DrawRectangleLinesEx(bounds, 1, (Color){ 100, 100, 110, 255 });
+    
+    int textWidth = MeasureText(text, fontSize);
+    DrawText(text, (int)(bounds.x + (bounds.width - textWidth)/2), (int)(bounds.y + (bounds.height - fontSize)/2), fontSize, WHITE);
+    
+    return clicked;
+}
+
+// Draw Help Dialog
+void DrawHelpDialog(int screenWidth, int screenHeight, bool *showHelp) {
+    Rectangle modal = { 50, 50, (float)screenWidth - 100, (float)screenHeight - 100 };
+    DrawRectangleRec(modal, (Color){ 30, 30, 35, 250 });
+    DrawRectangleLinesEx(modal, 2, (Color){ 80, 80, 90, 255 });
+    
+    DrawText("Guía de Usuario / Help", (int)modal.x + 20, (int)modal.y + 20, 20, WHITE);
+    DrawRectangle((int)modal.x + 20, (int)modal.y + 45, (int)modal.width - 40, 1, GRAY);
+    
+    int y = (int)modal.y + 60;
+    DrawText("Ajustes de Compresión:", 70, y, 15, YELLOW); y += 20;
+    DrawText("- Calidad: Fidelidad visual (55-65 recomendado).", 70, y, 13, LIGHTGRAY); y += 18;
+    DrawText("- Velocidad: 0 (mejor compresión) a 10 (más rápido).", 70, y, 13, LIGHTGRAY); y += 18;
+    DrawText("- Hilos: Imágenes procesadas a la vez (# de CPUs).", 70, y, 13, LIGHTGRAY); y += 30;
+    
+    DrawText("Gestión de Procesos:", 70, y, 15, YELLOW); y += 20;
+    DrawText("- Pausar/Reanudar: Detiene/continúa el trabajo.", 70, y, 13, LIGHTGRAY); y += 18;
+    DrawText("- Parar: Cancela el trabajo definitivamente.", 70, y, 13, LIGHTGRAY); y += 18;
+    DrawText("- Eliminar: Quita el registro (disponible al terminar).", 70, y, 13, LIGHTGRAY); y += 35;
+    
+    DrawText("Salida:", 70, y, 15, YELLOW); y += 20;
+    DrawText("- Crea una carpeta con sufijo '(compressed)'.", 70, y, 13, LIGHTGRAY);
+    
+    if (GuiButton((Rectangle){ modal.x + modal.width - 100, modal.y + modal.height - 40, 80, 25 }, "Cerrar", 13, (Color){ 80, 40, 40, 255 })) {
+        *showHelp = false;
+    }
+}
+
 int main(void) {
     // Initialize libvips first
     if (!processor_init()) {
@@ -160,6 +210,7 @@ int main(void) {
     };
     
     bool isDragging = false;
+    bool showHelp = false;
     
     while (!WindowShouldClose()) {
         // Check for dropped files/folders
@@ -181,6 +232,11 @@ int main(void) {
         DrawRectangle(0, 0, screenWidth, 70, (Color){ 35, 35, 42, 255 });
         DrawText("Manga Optimizer", 20, 15, 28, WHITE);
         DrawText("AVIF Smart Compression - Low Memory Mode", 20, 48, 14, (Color){ 150, 150, 160, 255 });
+        
+        // Help button in header
+        if (GuiButton((Rectangle){ (float)screenWidth - 50, 15, 30, 30 }, "?", 18, (Color){ 60, 60, 70, 255 })) {
+            showHelp = true;
+        }
         
         // Memory indicator
         DrawText("libvips: ~50MB RAM", screenWidth - 150, 48, 12, (Color){ 100, 200, 100, 255 });
@@ -231,7 +287,8 @@ int main(void) {
             int yOffset = 345;
             pthread_mutex_lock(&jobMutex);
             for (int i = 0; i < jobCount && i < 4; i++) {
-                FolderJob *job = &jobs[i];
+                FolderJob *job = jobs[i];
+                if (!job) continue;
                 
                 // Get folder name (simple extraction)
                 const char *folderName = strrchr(job->sourcePath, '\\');
@@ -253,6 +310,9 @@ int main(void) {
                     statusColor = (Color){ 255, 100, 100, 255 };
                 } else if (job->status == JOB_STOPPED) {
                     statusText = "Stopped";
+                    statusColor = (Color){ 200, 150, 100, 255 };
+                } else if (job->status == JOB_STOPPING) {
+                    statusText = "Stopping...";
                     statusColor = (Color){ 200, 150, 100, 255 };
                 }
                 
@@ -293,8 +353,39 @@ int main(void) {
                 // Status label
                 DrawText(statusText, screenWidth - 100, detailsY, 13, statusColor);
                 
-                // Current file (if processing)
-                if (job->status == JOB_PROCESSING && job->currentFile[0] != '\0') {
+                // Controls
+                int btnX = 490;
+                if (job->status == JOB_PROCESSING || job->status == JOB_PAUSED || job->status == JOB_PENDING || job->status == JOB_STOPPING) {
+                    if (job->status != JOB_STOPPING && job->status != JOB_PENDING) {
+                        const char *pText = (job->status == JOB_PAUSED) ? "Resume" : "Pause";
+                        if (GuiButton((Rectangle){ (float)btnX, (float)detailsY - 2, 55, 20 }, pText, 11, (Color){ 60, 60, 80, 255 })) {
+                            if (job->status == JOB_PAUSED) job->status = JOB_PROCESSING;
+                            else job->status = JOB_PAUSED;
+                        }
+                    }
+                    
+                    if (job->status != JOB_STOPPING) {
+                        if (GuiButton((Rectangle){ (float)btnX + 60, (float)detailsY - 2, 45, 20 }, "Stop", 11, (Color){ 80, 40, 40, 255 })) {
+                            job->status = JOB_STOPPING;
+                        }
+                    }
+                } else {
+                    // Delete button - only if not processing
+                    if (GuiButton((Rectangle){ (float)btnX + 60, (float)detailsY - 2, 45, 20 }, "Del", 11, (Color){ 100, 40, 40, 255 })) {
+                        // Delete job: free memory and shift pointers
+                        FolderJob* jobToFree = jobs[i];
+                        for (int j = i; j < jobCount - 1; j++) {
+                            jobs[j] = jobs[j+1];
+                        }
+                        jobCount--;
+                        free(jobToFree);
+                        pthread_mutex_unlock(&jobMutex);
+                        break; // Exit loop, next frame will redraw correctly
+                    }
+                }
+                
+                // Current file (if processing or paused)
+                if ((job->status == JOB_PROCESSING || job->status == JOB_PAUSED || job->status == JOB_STOPPING) && job->currentFile[0] != '\0') {
                     DrawText(TextFormat("  > %s", job->currentFile), 35, detailsY + 16, 11, GRAY);
                     yOffset += 55; // Enough space for next job
                 } else {
@@ -307,11 +398,19 @@ int main(void) {
         // Footer
         DrawText("v1.0 - raylib + libvips | Cross-platform Windows/Linux", 20, screenHeight - 22, 11, DARKGRAY);
         
+        // Help Dialog (top layer)
+        if (showHelp) DrawHelpDialog(screenWidth, screenHeight, &showHelp);
+        
         EndDrawing();
     }
     
     CloseWindow();
     processor_shutdown();
+    
+    // Final cleanup of remaining jobs
+    for (int i = 0; i < jobCount; i++) {
+        if (jobs[i]) free(jobs[i]);
+    }
     
     return 0;
 }

@@ -13,6 +13,8 @@
 #define JOB_COMPLETED  2
 #define JOB_ERROR      3
 #define JOB_STOPPED    4
+#define JOB_PAUSED     5
+#define JOB_STOPPING   6
 
 // Compression settings
 typedef struct {

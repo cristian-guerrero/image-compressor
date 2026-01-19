@@ -325,7 +325,11 @@ int process_folder(FolderJob *job) {
     
     // Process each image
     for (int i = 0; i < imageCount; i++) {
-        if (job->status == JOB_STOPPED) break;
+        // Check for Stop/Pause
+        while (job->status == JOB_PAUSED) {
+            processor_sleep(200);
+        }
+        if (job->status == JOB_STOPPED || job->status == JOB_STOPPING) break;
         
         char inputPath[1024];
         char outputPath[1024];
@@ -371,11 +375,13 @@ int process_folder(FolderJob *job) {
     
     free(imageFiles);
     
-    if (job->status != JOB_STOPPED) {
+    if (job->status == JOB_STOPPING) {
+        job->status = JOB_STOPPED;
+    } else if (job->status != JOB_STOPPED) {
         job->status = JOB_COMPLETED;
     }
     
-    printf("Job completed: %s\n", job->sourcePath);
+    printf("Job finished (status %d): %s\n", job->status, job->sourcePath);
     return 0;
 }
 
@@ -434,7 +440,11 @@ int process_folder(FolderJob *job) {
     
     // Process each image
     for (int i = 0; i < imageCount; i++) {
-        if (job->status == JOB_STOPPED) break;
+        // Check for Stop/Pause
+        while (job->status == JOB_PAUSED) {
+            processor_sleep(200);
+        }
+        if (job->status == JOB_STOPPED || job->status == JOB_STOPPING) break;
         
         char inputPath[520];
         char outputPath[520];
@@ -477,11 +487,13 @@ int process_folder(FolderJob *job) {
     
     free(imageFiles);
     
-    if (job->status != JOB_STOPPED) {
+    if (job->status == JOB_STOPPING) {
+        job->status = JOB_STOPPED;
+    } else if (job->status != JOB_STOPPED) {
         job->status = JOB_COMPLETED;
     }
     
-    printf("Job completed: %s\n", job->sourcePath);
+    printf("Job finished (status %d): %s\n", job->status, job->sourcePath);
     return 0;
 }
 #endif
