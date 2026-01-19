@@ -16,6 +16,7 @@
 #define MAIN_C_HEADERS
 #include "raylib.h"
 #include "processor.h"
+#include "font_data.h"
 #include <stdio.h>
 #include <string.h>
 #include <pthread.h>
@@ -192,10 +193,10 @@ int main(void) {
     InitWindow(screenWidth, screenHeight, "Manga Optimizer - AVIF Compressor");
     SetTargetFPS(60);
 
-    // Load custom font
-    guiFont = LoadFontEx("resources/font.ttf", 64, 0, 250);
+    // Load custom font from memory (embedded)
+    guiFont = LoadFontFromMemory(".ttf", font_data, font_data_size, 64, 0, 250);
     if (guiFont.texture.id == 0) {
-        printf("WARNING: Failed to load custom font, using default\n");
+        printf("WARNING: Failed to load embedded font, using default\n");
         guiFont = GetFontDefault();
     } else {
         SetTextureFilter(guiFont.texture, TEXTURE_FILTER_BILINEAR);
@@ -458,7 +459,7 @@ int main(void) {
         }
         
         // Footer
-        DrawTextEx(guiFont, "v1.3 - raylib + libvips | UI Font: Cascadia Mono (Optimized)", (Vector2){ 20, (float)screenHeight - 22 }, 13, 0, DARKGRAY);
+        DrawTextEx(guiFont, "v1.4 - raylib + libvips | UI Font: Cascadia Mono (Embedded)", (Vector2){ 20, (float)screenHeight - 22 }, 13, 0, DARKGRAY);
         
         // Help Dialog (top layer)
         if (showHelp) DrawHelpDialog(screenWidth, screenHeight, &showHelp);
