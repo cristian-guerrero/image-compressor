@@ -41,7 +41,7 @@ if %ERRORLEVEL% NEQ 0 (
 
 echo Step 3: Linking (Release Mode)...
 for /f "delims=" %%i in ('pkg-config --libs vips') do set VIPS_LIBS=%%i
-gcc main.o processor.o -o compressor.exe %VIPS_LIBS% -lraylib -lgdi32 -lwinmm -lopengl32 -lpthread -mwindows
+gcc main.o processor.o -o compressor.exe %VIPS_LIBS% -lraylib -lgdi32 -lwinmm -lopengl32 -lpthread -mwindows -Wl,--subsystem,windows
 if %ERRORLEVEL% NEQ 0 (
     echo ERROR: Failed to link
     exit /b 1
