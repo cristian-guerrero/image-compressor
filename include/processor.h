@@ -32,6 +32,7 @@ typedef struct {
     int totalFiles;
     int doneFiles;
     char currentFile[256];
+    int activeThreads;         // How many threads are currently processing an image
     CompressionConfig config;
 } FolderJob;
 

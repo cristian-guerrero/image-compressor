@@ -10,7 +10,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-
+#include <pthread.h>
 #ifdef _WIN32
     #include <windows.h>
     #include <direct.h>
@@ -20,9 +20,31 @@
 #else
     #include <sys/stat.h>
     #include <dirent.h>
+    #include <unistd.h>
     #define PATH_SEP '/'
     #define PATH_SEP_STR "/"
     #define my_mkdir(path) mkdir(path, 0755)
+#endif
+
+#ifdef _WIN32
+// Helper: Convert UTF-8 string to Wide string
+static int utf8_to_wide(const char *utf8, wchar_t *wide, int wideSize) {
+    return MultiByteToWideChar(CP_UTF8, 0, utf8, -1, wide, wideSize);
+}
+
+// Helper: Convert Wide string to UTF-8
+static int wide_to_utf8(const wchar_t *wide, char *utf8, int utf8Size) {
+    return WideCharToMultiByte(CP_UTF8, 0, wide, -1, utf8, utf8Size, NULL, NULL);
+}
+
+// Helper: Create directory with unicode support
+static int create_dir_unicode(const char *path) {
+    wchar_t widePath[520];
+    if (utf8_to_wide(path, widePath, 520) == 0) {
+        return _mkdir(path);
+    }
+    return _wmkdir(widePath) == 0 ? 0 : -1;
+}
 #endif
 
 // Supported image extensions
@@ -184,10 +206,15 @@ static int compress_image_to_avif(const char *inputPath, const char *outputPath,
     // Get original file size for comparison
     long originalSize = get_file_size(inputPath);
     
+    // Speed mapping: UI (0=slow, 10=fast) -> libvips effort (0=slow/best, 9=fast/worst)
+    // For AVIF/libheif, lower effort values mean more compression effort (slowest).
+    int effort = config->speed;
+    if (effort > 9) effort = 9;
+
     // Save as AVIF with specified quality
     int result = vips_heifsave(image, outputPath,
                                "Q", config->quality,
-                               "speed", config->speed,
+                               "effort", effort,
                                "compression", VIPS_FOREIGN_HEIF_COMPRESSION_AV1,
                                NULL);
     
@@ -226,27 +253,110 @@ static int compress_image_to_avif(const char *inputPath, const char *outputPath,
     return 0;
 }
 
+// Data passed to image processing threads
+typedef struct {
+    FolderJob *job;
+    char **imageFiles;
+    int imageCount;
+    int *nextImageIndex;
+    pthread_mutex_t *lock;
+} ParallelJobData;
+
+// Thread function for processing images in parallel
+void* image_worker(void *arg) {
+    ParallelJobData *data = (ParallelJobData*)arg;
+    
+    // For AVIF, we want 1 thread per image to maximize image-level parallelism
+    vips_concurrency_set(1);
+    
+    while (1) {
+        int index = -1;
+        
+        // Pick next image
+        pthread_mutex_lock(data->lock);
+        if (data->job->status == JOB_STOPPED || data->job->status == JOB_STOPPING) {
+            pthread_mutex_unlock(data->lock);
+            break;
+        }
+        
+        if (*data->nextImageIndex < data->imageCount) {
+            index = (*data->nextImageIndex)++;
+        }
+        pthread_mutex_unlock(data->lock);
+        
+        if (index == -1) break; // No more images
+        
+        // Handle Pause
+        while (data->job->status == JOB_PAUSED) {
+            processor_sleep(200);
+            if (data->job->status == JOB_STOPPED || data->job->status == JOB_STOPPING) break;
+        }
+        if (data->job->status == JOB_STOPPED || data->job->status == JOB_STOPPING) break;
+
+        char inputPath[1024];
+        char outputPath[1024];
+        const char *filename = "";
+        
+        // Get filename for UI display
+        const char *lastSlash = strrchr(data->imageFiles[index], PATH_SEP);
+        filename = lastSlash ? lastSlash + 1 : data->imageFiles[index];
+
+        snprintf(inputPath, sizeof(inputPath), "%s%c%s", data->job->sourcePath, PATH_SEP, data->imageFiles[index]);
+        
+        // Build output path by stripping original extension
+        char baseName[260];
+        strncpy(baseName, data->imageFiles[index], sizeof(baseName) - 1);
+        baseName[sizeof(baseName) - 1] = '\0';
+        char *dot = strrchr(baseName, '.');
+        if (dot) *dot = '\0';
+        
+        snprintf(outputPath, sizeof(outputPath), "%s%c%s.avif", data->job->outputPath, PATH_SEP, baseName);
+
+        // Update current file status and active count
+        pthread_mutex_lock(data->lock);
+        strncpy(data->job->currentFile, filename, 255);
+        data->job->activeThreads++;
+        pthread_mutex_unlock(data->lock);
+
+        // Check if already processed to enable resume
 #ifdef _WIN32
-// Helper: Convert UTF-8 string to Wide string
-// Note: raylib passes paths in UTF-8 encoding
-static int utf8_to_wide(const char *utf8, wchar_t *wide, int wideSize) {
-    return MultiByteToWideChar(CP_UTF8, 0, utf8, -1, wide, wideSize);
-}
+        wchar_t wideOutputPath[520];
+        utf8_to_wide(outputPath, wideOutputPath, 520);
+        if (GetFileAttributesW(wideOutputPath) != INVALID_FILE_ATTRIBUTES) {
+#else
+        struct stat st;
+        if (stat(outputPath, &st) == 0) {
+#endif
+            pthread_mutex_lock(data->lock);
+            data->job->doneFiles++;
+            data->job->activeThreads--; // Decrement since we're done here
+            if (data->imageCount > 0) {
+                data->job->progress = (data->job->doneFiles * 100) / data->imageCount;
+            }
+            pthread_mutex_unlock(data->lock);
+            continue;
+        }
 
-// Helper: Convert Wide string to UTF-8
-static int wide_to_utf8(const wchar_t *wide, char *utf8, int utf8Size) {
-    return WideCharToMultiByte(CP_UTF8, 0, wide, -1, utf8, utf8Size, NULL, NULL);
-}
+        // Parallelism proof: Log before starting
+        printf("[Job %p] Thread %p: Starting %s\n", (void*)data->job, (void*)pthread_self(), filename);
 
-// Helper: Create directory with unicode support
-static int create_dir_unicode(const char *path) {
-    wchar_t widePath[520];
-    if (utf8_to_wide(path, widePath, 520) == 0) {
-        return _mkdir(path);
+        // Compress
+        compress_image_to_avif(inputPath, outputPath, data->imageFiles[index], &data->job->config);
+
+        // Update progress and decrement active count
+        pthread_mutex_lock(data->lock);
+        data->job->doneFiles++;
+        data->job->activeThreads--; 
+        if (data->imageCount > 0) {
+            data->job->progress = (data->job->doneFiles * 100) / data->imageCount;
+        }
+        pthread_mutex_unlock(data->lock);
     }
-    return _wmkdir(widePath) == 0 ? 0 : -1;
+    
+    return NULL;
 }
 
+#ifdef _WIN32
 // Windows directory iteration with Unicode support
 int process_folder(FolderJob *job) {
     WIN32_FIND_DATAW findData;
@@ -262,6 +372,11 @@ int process_folder(FolderJob *job) {
     job->status = JOB_PROCESSING;
     job->progress = 0;
     job->doneFiles = 0;
+    job->activeThreads = 0;
+    
+    // Set libvips concurrency for this job
+    vips_concurrency_set(job->config.threads);
+    printf("Job Concurrency: %d threads\n", job->config.threads);
     
     // Convert source path to wide (raylib uses UTF-8)
     if (utf8_to_wide(job->sourcePath, wideSourcePath, 520) == 0) {
@@ -313,63 +428,42 @@ int process_folder(FolderJob *job) {
     
     FindClose(hFind);
     
-    printf("Found %d images\n", imageCount);
-    
     job->totalFiles = imageCount;
     
-    if (imageCount == 0) {
-        job->status = JOB_COMPLETED;
-        free(imageFiles);
-        return 0;
+    // Prepare parallel processing
+    int nextIndex = 0;
+    pthread_mutex_t jobLock;
+    pthread_mutex_init(&jobLock, NULL);
+    
+    int numThreads = job->config.threads;
+    if (numThreads < 1) numThreads = 1;
+    if (numThreads > imageCount) numThreads = imageCount;
+    
+    printf("Spawning %d threads for %d images\n", numThreads, imageCount);
+    
+    pthread_t *threads = (pthread_t*)malloc(numThreads * sizeof(pthread_t));
+    ParallelJobData *threadData = (ParallelJobData*)malloc(numThreads * sizeof(ParallelJobData));
+    
+    for (int i = 0; i < numThreads; i++) {
+        threadData[i].job = job;
+        threadData[i].imageFiles = imageFiles;
+        threadData[i].imageCount = imageCount;
+        threadData[i].nextImageIndex = &nextIndex;
+        threadData[i].lock = &jobLock;
+        pthread_create(&threads[i], NULL, image_worker, &threadData[i]);
     }
     
-    // Process each image
+    // Wait for all threads to finish
+    for (int i = 0; i < numThreads; i++) {
+        pthread_join(threads[i], NULL);
+    }
+    
+    free(threads);
+    free(threadData);
+    pthread_mutex_destroy(&jobLock);
+    
+    // Clean up file list
     for (int i = 0; i < imageCount; i++) {
-        // Check for Stop/Pause
-        while (job->status == JOB_PAUSED) {
-            processor_sleep(200);
-        }
-        if (job->status == JOB_STOPPED || job->status == JOB_STOPPING) break;
-        
-        char inputPath[1024];
-        char outputPath[1024];
-        char avifName[260];
-        
-        // Update current file
-        strncpy(job->currentFile, imageFiles[i], sizeof(job->currentFile) - 1);
-        
-        // Build paths
-        snprintf(inputPath, sizeof(inputPath), "%s\\%s", job->sourcePath, imageFiles[i]);
-        
-        // Change extension to .avif
-        strncpy(avifName, imageFiles[i], sizeof(avifName) - 1);
-        char *dot = strrchr(avifName, '.');
-        if (dot) {
-            strcpy(dot, ".avif");
-        } else {
-            strcat(avifName, ".avif");
-        }
-        snprintf(outputPath, sizeof(outputPath), "%s\\%s", job->outputPath, avifName);
-        
-        // Check if already processed (using wide API)
-        wchar_t wideOutputPath[520];
-        utf8_to_wide(outputPath, wideOutputPath, 520);
-        if (GetFileAttributesW(wideOutputPath) != INVALID_FILE_ATTRIBUTES) {
-            // Already exists, skip
-            job->doneFiles++;
-            job->progress = (job->doneFiles * 100) / job->totalFiles;
-            free(imageFiles[i]);
-            continue;
-        }
-        
-        printf("Compressing: %s\n", imageFiles[i]);
-        
-        // Compress
-        compress_image_to_avif(inputPath, outputPath, imageFiles[i], &job->config);
-        
-        job->doneFiles++;
-        job->progress = (job->doneFiles * 100) / job->totalFiles;
-        
         free(imageFiles[i]);
     }
     
@@ -397,6 +491,11 @@ int process_folder(FolderJob *job) {
     job->status = JOB_PROCESSING;
     job->progress = 0;
     job->doneFiles = 0;
+    job->activeThreads = 0;
+    
+    // Set libvips concurrency for this job
+    vips_concurrency_set(job->config.threads);
+    printf("Job Concurrency: %d threads\n", job->config.threads);
     
     // Create output directory
     my_mkdir(job->outputPath);
@@ -432,59 +531,42 @@ int process_folder(FolderJob *job) {
     job->totalFiles = imageCount;
     printf("Found %d images in %s\n", imageCount, job->sourcePath);
     
-    if (imageCount == 0) {
-        job->status = JOB_COMPLETED;
-        free(imageFiles);
-        return 0;
+    // Prepare parallel processing
+    int nextIndex = 0;
+    pthread_mutex_t jobLock;
+    pthread_mutex_init(&jobLock, NULL);
+    
+    int numThreads = job->config.threads;
+    if (numThreads < 1) numThreads = 1;
+    if (numThreads > imageCount) numThreads = imageCount;
+    
+    printf("Spawning %d threads for %d images\n", numThreads, imageCount);
+    
+    pthread_t *threads = (pthread_t*)malloc(numThreads * sizeof(pthread_t));
+    ParallelJobData *threadData = (ParallelJobData*)malloc(numThreads * sizeof(ParallelJobData));
+    
+    for (int i = 0; i < numThreads; i++) {
+        threadData[i].job = job;
+        threadData[i].imageFiles = imageFiles;
+        threadData[i].imageCount = imageCount;
+        threadData[i].nextImageIndex = &nextIndex;
+        threadData[i].lock = &jobLock;
+        pthread_create(&threads[i], NULL, image_worker, &threadData[i]);
     }
     
-    // Process each image
+    // Wait for all threads to finish
+    for (int i = 0; i < numThreads; i++) {
+        pthread_join(threads[i], NULL);
+    }
+    
+    free(threads);
+    free(threadData);
+    pthread_mutex_destroy(&jobLock);
+    
+    // Clean up file list
     for (int i = 0; i < imageCount; i++) {
-        // Check for Stop/Pause
-        while (job->status == JOB_PAUSED) {
-            processor_sleep(200);
-        }
-        if (job->status == JOB_STOPPED || job->status == JOB_STOPPING) break;
-        
-        char inputPath[520];
-        char outputPath[520];
-        char avifName[260];
-        
-        // Update current file
-        strncpy(job->currentFile, imageFiles[i], sizeof(job->currentFile) - 1);
-        
-        // Build paths
-        snprintf(inputPath, sizeof(inputPath), "%s/%s", job->sourcePath, imageFiles[i]);
-        
-        // Change extension to .avif
-        strncpy(avifName, imageFiles[i], sizeof(avifName) - 1);
-        char *dot = strrchr(avifName, '.');
-        if (dot) {
-            strcpy(dot, ".avif");
-        } else {
-            strcat(avifName, ".avif");
-        }
-        snprintf(outputPath, sizeof(outputPath), "%s/%s", job->outputPath, avifName);
-        
-        // Check if already processed
-        struct stat st;
-        if (stat(outputPath, &st) == 0) {
-            // Already exists, skip
-            job->doneFiles++;
-            job->progress = (job->doneFiles * 100) / job->totalFiles;
-            free(imageFiles[i]);
-            continue;
-        }
-        
-        // Compress
-        compress_image_to_avif(inputPath, outputPath, imageFiles[i], &job->config);
-        
-        job->doneFiles++;
-        job->progress = (job->doneFiles * 100) / job->totalFiles;
-        
         free(imageFiles[i]);
     }
-    
     free(imageFiles);
     
     if (job->status == JOB_STOPPING) {

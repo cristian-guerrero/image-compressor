@@ -7,6 +7,10 @@ echo  Image Compressor - BUILD DEBUG (Windows)
 echo ============================================
 echo.
 
+REM Kill any running instances
+taskkill /IM compressor_debug.exe /F >nul 2>&1
+taskkill /IM compressor.exe /F >nul 2>&1
+
 REM Check for pkg-config
 where pkg-config >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (

@@ -158,7 +158,7 @@ void DrawHelpDialog(int screenWidth, int screenHeight, bool *showHelp) {
     int y = (int)modal.y + 60;
     DrawText("Ajustes de Compresión:", 70, y, 15, YELLOW); y += 20;
     DrawText("- Calidad: Fidelidad visual (55-65 recomendado).", 70, y, 13, LIGHTGRAY); y += 18;
-    DrawText("- Velocidad: 0 (mejor compresión) a 10 (más rápido).", 70, y, 13, LIGHTGRAY); y += 18;
+    DrawText("- Compresión (CPU): 0 (rápido) a 10 (mejor/lento).", 70, y, 13, LIGHTGRAY); y += 18;
     DrawText("- Hilos: Imágenes procesadas a la vez (# de CPUs).", 70, y, 13, LIGHTGRAY); y += 30;
     
     DrawText("Gestión de Procesos:", 70, y, 15, YELLOW); y += 20;
@@ -205,7 +205,7 @@ int main(void) {
     // Settings
     CompressionConfig config = {
         .quality = 55,
-        .speed = 8,
+        .speed = 6,
         .threads = maxThreads / 2 > 0 ? maxThreads / 2 : 1  // Default to half of CPU count
     };
     
@@ -266,10 +266,10 @@ int main(void) {
         config.quality = DrawSlider((Rectangle){ 180, 203, 200, 16 }, config.quality, 0, 100, (Color){ 80, 160, 80, 255 });
         DrawText("(0=min, 100=max)", 390, 205, 12, GRAY);
         
-        // Speed slider
-        DrawText(TextFormat("Velocidad: %d", config.speed), 30, 230, 14, (Color){ 200, 200, 210, 255 });
+        // Speed/Effort slider
+        DrawText(TextFormat("Compresión (CPU): %d", config.speed), 30, 230, 14, (Color){ 200, 200, 210, 255 });
         config.speed = DrawSlider((Rectangle){ 180, 228, 200, 16 }, config.speed, 0, 10, (Color){ 80, 140, 200, 255 });
-        DrawText("(0=lento, 10=rapido)", 390, 230, 12, GRAY);
+        DrawText("(0=rapido, 10=mejor)", 390, 230, 12, GRAY);
         
         // Threads slider
         DrawText(TextFormat("Hilos: %d", config.threads), 30, 255, 14, (Color){ 200, 200, 210, 255 });
@@ -348,7 +348,11 @@ int main(void) {
                 }
                 
                 // Progress text
-                DrawText(TextFormat("%d/%d", job->doneFiles, job->totalFiles), 450, detailsY, 13, LIGHTGRAY);
+                if (job->status == JOB_PROCESSING || job->status == JOB_STOPPING) {
+                    DrawText(TextFormat("%d/%d (Active: %d)", job->doneFiles, job->totalFiles, job->activeThreads), 430, detailsY, 13, LIGHTGRAY);
+                } else {
+                    DrawText(TextFormat("%d/%d", job->doneFiles, job->totalFiles), 450, detailsY, 13, LIGHTGRAY);
+                }
                 
                 // Status label
                 DrawText(statusText, screenWidth - 100, detailsY, 13, statusColor);
@@ -387,9 +391,9 @@ int main(void) {
                 // Current file (if processing or paused)
                 if ((job->status == JOB_PROCESSING || job->status == JOB_PAUSED || job->status == JOB_STOPPING) && job->currentFile[0] != '\0') {
                     DrawText(TextFormat("  > %s", job->currentFile), 35, detailsY + 16, 11, GRAY);
-                    yOffset += 55; // Enough space for next job
+                    yOffset += 60; // Enough space for next job
                 } else {
-                    yOffset += 45; // Standard space per job
+                    yOffset += 50; // Standard space per job
                 }
             }
             pthread_mutex_unlock(&jobMutex);
