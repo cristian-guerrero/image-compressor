@@ -54,7 +54,9 @@ void* JobWorker(void* arg) {
 
         if (currentJob) {
             process_folder(currentJob);
-            processor_thread_cleanup();
+            // NOTE: Do NOT call processor_thread_cleanup() here!
+            // It calls vips_thread_shutdown() which destroys libvips structures
+            // needed for subsequent jobs, causing GLib errors
         } else {
             // No jobs, sleep a bit to avoid CPU spin
             processor_sleep(500); 

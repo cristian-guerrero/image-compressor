@@ -69,11 +69,18 @@ int processor_init(void) {
     // Set concurrency
     vips_concurrency_set(4);
     
-    // Disable caching on Windows to prevent file locking issues
-    // Using a tiny cache to avoid leaks while maintaining some performance
+#ifdef _WIN32
+    // Completely disable file caching on Windows to prevent folder locking issues
+    // This ensures Windows can delete folders immediately after processing
+    vips_cache_set_max(0);
+    vips_cache_set_max_mem(0);
+    vips_cache_set_max_files(0);
+#else
+    // Use a small cache on Linux/Unix systems
     vips_cache_set_max(10);
     vips_cache_set_max_mem(50 * 1024 * 1024); // 50MB
     vips_cache_set_max_files(10);
+#endif
     
     // Enable leak reporting to stdout/stderr
     // vips_leak_set(TRUE); 
@@ -230,10 +237,13 @@ static int compress_image_to_avif(const char *inputPath, const char *outputPath,
                                NULL);
     
     g_object_unref(image);
-    
-    // Aggressively drop all cache entries to release file handles immediately
-    vips_cache_drop_all();
     vips_error_clear();
+    
+#ifdef _WIN32
+    // Small delay after processing each image to allow Windows to close file handles
+    // Since cache is disabled, we don't need to call vips_cache_drop_all() here
+    Sleep(10);
+#endif
     
     if (result != 0) {
         fprintf(stderr, "Error saving AVIF: %s - %s\n", outputPath, vips_error_buffer());
@@ -281,8 +291,9 @@ typedef struct {
 void* image_worker(void *arg) {
     ParallelJobData *data = (ParallelJobData*)arg;
     
-    // For AVIF, we want 1 thread per image to maximize image-level parallelism
-    vips_concurrency_set(1);
+    // NOTE: Do NOT call vips_concurrency_set() here - it's set globally in process_folder()
+    // Calling it per-thread can cause GLib errors when starting new jobs
+    // Each thread processes one image at a time, which is the desired behavior
     
     while (1) {
         int index = -1;
@@ -491,9 +502,15 @@ int process_folder(FolderJob *job) {
         job->status = JOB_COMPLETED;
     }
     
-    // Force libvips to release all file handles from cache
+#ifdef _WIN32
+    // On Windows, cache is disabled so vips_cache_drop_all() is not needed
+    // Just wait for Windows to release file handles naturally
+    // This delay is critical when processing multiple folders
+    Sleep(500);
+#else
+    // On Linux/Unix, drop cache to release file handles
     vips_cache_drop_all();
-    vips_thread_shutdown();
+#endif
     
     printf("Job finished (status %d): %s\n", job->status, job->sourcePath);
     return 0;
@@ -597,7 +614,9 @@ int process_folder(FolderJob *job) {
     
     // Force libvips to release all file handles from cache
     vips_cache_drop_all();
-    vips_thread_shutdown();
+    
+    // On Linux/Unix, don't shutdown threads to allow subsequent jobs
+    // vips_thread_shutdown();
     
     printf("Job finished (status %d): %s\n", job->status, job->sourcePath);
     return 0;
