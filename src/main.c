@@ -179,7 +179,12 @@ void DrawHelpDialog(int screenWidth, int screenHeight, bool *showHelp) {
     }
 }
 
-int main(void) {
+int main(int argc, char **argv) {
+#ifdef _WIN32
+    // Disable memory-mapped files in libvips on Windows to prevent folder locking
+    _putenv("VIPS_MMAP=0");
+#endif
+    
     // Initialize libvips first
     if (!processor_init()) {
         printf("ERROR: Failed to initialize libvips!\n");
