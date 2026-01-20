@@ -43,6 +43,9 @@ int processor_init(void);
 // Shutdown libvips (call before exit)
 void processor_shutdown(void);
 
+// Clean up current thread vips resources
+void processor_thread_cleanup(void);
+
 // Process an entire folder
 // Updates job->progress, job->doneFiles, job->currentFile during processing
 int process_folder(FolderJob *job);

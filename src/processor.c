@@ -69,10 +69,14 @@ int processor_init(void) {
     // Set concurrency
     vips_concurrency_set(4);
     
-    // Disable caching on Windows to prevent file locking issues
-    // Since images are processed in a single pass, cache is not needed
+    // Hard-disable caching to prevent leaks and file locking
+    // Force cache to 0 in all aspects
     vips_cache_set_max(0);
     vips_cache_set_max_mem(0);
+    vips_cache_set_max_files(0);
+    
+    // Enable leak reporting to stdout/stderr
+    // vips_leak_set(TRUE); 
     
     printf("libvips %s initialized\n", vips_version_string());
     vips_initialized = 1;
@@ -84,6 +88,10 @@ void processor_shutdown(void) {
         vips_shutdown();
         vips_initialized = 0;
     }
+}
+
+void processor_thread_cleanup(void) {
+    vips_thread_shutdown();
 }
 
 // Check if filename has a supported image extension
@@ -199,16 +207,50 @@ static int copy_file(const char *src, const char *dst) {
 static int compress_image_to_avif(const char *inputPath, const char *outputPath, 
                                    const char *originalName, CompressionConfig *config) {
     VipsImage *image = NULL;
+    void *fileBuffer = NULL;
+    size_t fileSize = 0;
     
-    // Load the image (libvips uses streaming, low memory)
-    image = vips_image_new_from_file(inputPath, "access", VIPS_ACCESS_SEQUENTIAL, NULL);
+#ifdef _WIN32
+    wchar_t widePath[520];
+    utf8_to_wide(inputPath, widePath, 520);
+    FILE *f = _wfopen(widePath, L"rb");
+#else
+    FILE *f = fopen(inputPath, "rb");
+#endif
+
+    if (!f) {
+        fprintf(stderr, "Error opening: %s\n", inputPath);
+        return -1;
+    }
+
+    fseek(f, 0, SEEK_END);
+    fileSize = ftell(f);
+    fseek(f, 0, SEEK_SET);
+
+    fileBuffer = g_malloc(fileSize);
+    if (!fileBuffer) {
+        fclose(f);
+        return -1;
+    }
+
+    if (fread(fileBuffer, 1, fileSize, f) != fileSize) {
+        fclose(f);
+        g_free(fileBuffer);
+        return -1;
+    }
+
+    fclose(f); // FILE HANDLE RELEASED HERE!
+
+    // 2. Load from buffer
+    image = vips_image_new_from_buffer(fileBuffer, fileSize, "", "access", VIPS_ACCESS_SEQUENTIAL, NULL);
     if (!image) {
-        fprintf(stderr, "Error loading: %s\n", inputPath);
+        fprintf(stderr, "Error loading from buffer: %s\n", inputPath);
+        if (fileBuffer) g_free(fileBuffer);
         return -1;
     }
     
-    // Get original file size for comparison
-    long originalSize = get_file_size(inputPath);
+    // Original size for comparison
+    long originalSize = (long)fileSize;
     
     // Speed mapping: UI (0=slow, 10=fast) -> libvips effort (0=slow/best, 9=fast/worst)
     // For AVIF/libheif, lower effort values mean more compression effort (slowest).
@@ -232,8 +274,12 @@ static int compress_image_to_avif(const char *inputPath, const char *outputPath,
     if (result != 0) {
         fprintf(stderr, "Error saving AVIF: %s - %s\n", outputPath, vips_error_buffer());
         vips_error_clear();
+        if (fileBuffer) g_free(fileBuffer);
         return -1;
     }
+    
+    // Free the source buffer now that we're done with the VipsImage
+    if (fileBuffer) g_free(fileBuffer);
     
     // Check if compression was worthwhile (>15% reduction)
     long compressedSize = get_file_size(outputPath);
@@ -487,6 +533,7 @@ int process_folder(FolderJob *job) {
     
     // Force libvips to release all file handles from cache
     vips_cache_drop_all();
+    vips_thread_shutdown();
     
     printf("Job finished (status %d): %s\n", job->status, job->sourcePath);
     return 0;
@@ -590,6 +637,7 @@ int process_folder(FolderJob *job) {
     
     // Force libvips to release all file handles from cache
     vips_cache_drop_all();
+    vips_thread_shutdown();
     
     printf("Job finished (status %d): %s\n", job->status, job->sourcePath);
     return 0;
@@ -646,9 +694,9 @@ char* pick_folder_dialog(void) {
 
 long long get_process_ram_usage(void) {
 #ifdef _WIN32
-    PROCESS_MEMORY_COUNTERS pmc;
-    if (GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof(pmc))) {
-        return (long long)pmc.WorkingSetSize;
+    PROCESS_MEMORY_COUNTERS_EX pmc;
+    if (GetProcessMemoryInfo(GetCurrentProcess(), (PROCESS_MEMORY_COUNTERS*)&pmc, sizeof(pmc))) {
+        return (long long)pmc.PrivateUsage;
     }
     return 0;
 #else

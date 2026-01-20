@@ -54,6 +54,7 @@ void* JobWorker(void* arg) {
 
         if (currentJob) {
             process_folder(currentJob);
+            processor_thread_cleanup();
         } else {
             // No jobs, sleep a bit to avoid CPU spin
             processor_sleep(500); 
@@ -321,6 +322,26 @@ int main(void) {
         DrawRectangle(15, 305, screenWidth - 30, 210, (Color){ 35, 35, 42, 255 });
         DrawRectangleLines(15, 305, screenWidth - 30, 210, (Color){ 50, 50, 58, 255 });
         DrawTextEx(guiFont, TextFormat("Trabajos / Jobs (%d)", jobCount), (Vector2){ 25, 313 }, 16, 0, WHITE);
+        
+        // Button to clear all finished jobs (Done, Error, Stopped)
+        if (jobCount > 0) {
+            if (GuiButton((Rectangle){ (float)screenWidth - 135, 310, 110, 22 }, "Limpiar Listos", 12, (Color){ 60, 60, 70, 255 })) {
+                pthread_mutex_lock(&jobMutex);
+                for (int i = 0; i < jobCount; ) {
+                    if (jobs[i] && (jobs[i]->status == JOB_COMPLETED || jobs[i]->status == JOB_ERROR || jobs[i]->status == JOB_STOPPED)) {
+                        FolderJob* jobToFree = jobs[i];
+                        for (int j = i; j < jobCount - 1; j++) {
+                            jobs[j] = jobs[j+1];
+                        }
+                        jobCount--;
+                        free(jobToFree);
+                    } else {
+                        i++;
+                    }
+                }
+                pthread_mutex_unlock(&jobMutex);
+            }
+        }
         
         if (jobCount == 0) {
             DrawTextEx(guiFont, "No hay trabajos. Arrastra una carpeta para comenzar.", (Vector2){ 40, 360 }, 15, 0, GRAY);
