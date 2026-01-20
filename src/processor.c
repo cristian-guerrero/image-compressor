@@ -69,9 +69,10 @@ int processor_init(void) {
     // Set concurrency
     vips_concurrency_set(4);
     
-    // Enable caching for better performance
-    vips_cache_set_max(100);
-    vips_cache_set_max_mem(50 * 1024 * 1024);  // 50MB cache
+    // Disable caching on Windows to prevent file locking issues
+    // Since images are processed in a single pass, cache is not needed
+    vips_cache_set_max(0);
+    vips_cache_set_max_mem(0);
     
     printf("libvips %s initialized\n", vips_version_string());
     vips_initialized = 1;
@@ -222,6 +223,10 @@ static int compress_image_to_avif(const char *inputPath, const char *outputPath,
                                NULL);
     
     g_object_unref(image);
+    
+    // Aggressively drop all cache entries to release file handles immediately
+    // Critical on Windows to avoid folder locking
+    vips_cache_drop_all();
     vips_error_clear(); // Clear any warnings or old errors
     
     if (result != 0) {
