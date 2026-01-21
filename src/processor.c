@@ -67,7 +67,7 @@ int processor_init(void) {
     }
     
     // Set concurrency
-    vips_concurrency_set(4);
+    vips_concurrency_set(1);
     
 #ifdef _WIN32
     // Completely disable file caching on Windows to prevent folder locking issues
@@ -402,7 +402,8 @@ int process_folder(FolderJob *job) {
     job->activeThreads = 0;
     
     // Set libvips concurrency for this job
-    vips_concurrency_set(job->config.threads);
+    // vips_concurrency_set(job->config.threads);
+    vips_concurrency_set(1);
     printf("Job Concurrency: %d threads\n", job->config.threads);
     
     // Convert source path to wide (raylib uses UTF-8)
