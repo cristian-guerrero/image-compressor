@@ -37,8 +37,8 @@ jobs:
 
       - name: Create icon
         run: |
-          magick -size 256x256 xc:'#2E7D32' -gravity center -pointsize 48 -fill white -annotate +0+0 "IMG" resources/icon.png
-          magick -size 512x512 xc:'#2E7D32' -gravity center -pointsize 96 -fill white -annotate +0+0 "IMG" resources/icon512.png
+          convert -size 256x256 xc:'#2E7D32' -gravity center -pointsize 48 -fill white -annotate +0+0 "IMG" resources/icon.png
+          convert -size 512x512 xc:'#2E7D32' -gravity center -pointsize 96 -fill white -annotate +0+0 "IMG" resources/icon512.png
 
       - name: Build for Linux
         run: |
