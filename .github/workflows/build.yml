@@ -16,7 +16,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgl1-mesa-dev xorg-dev libvips-dev pkg-config cmake
+          sudo apt-get install -y libgl1-mesa-dev xorg-dev libvips-dev pkg-config cmake fuse libfuse2
 
       - name: Build and Install Raylib
         run: |
@@ -28,19 +28,114 @@ jobs:
           sudo make install
           sudo ldconfig
 
+      - name: Download AppImage tools
+        run: |
+          mkdir -p tools
+          wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage -O tools/linuxdeploy-x86_64.AppImage
+          wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -O tools/appimagetool-x86_64.AppImage
+          chmod +x tools/*.AppImage
+
+      - name: Create icon
+        run: |
+          magick -size 256x256 xc:'#2E7D32' -gravity center -pointsize 48 -fill white -annotate +0+0 "IMG" resources/icon.png
+          magick -size 512x512 xc:'#2E7D32' -gravity center -pointsize 96 -fill white -annotate +0+0 "IMG" resources/icon512.png
+
       - name: Build for Linux
         run: |
-          gcc src/main.c src/processor.c -o image-compressor-linux-amd64 \
-              $(pkg-config --cflags --libs vips) \
+          gcc src/main.c src/processor.c -o build/compressor \
+              $(pkg-config --cflags vips) \
               -Iinclude \
               -lraylib -lGL -lm -lpthread -ldl -lrt -lX11 \
-              -O2
+              -O3 -DNDEBUG
+
+      - name: Create AppDir structure
+        run: |
+          rm -rf AppDir
+          mkdir -p AppDir/usr/bin
+          mkdir -p AppDir/usr/share/applications
+          mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
+          mkdir -p AppDir/usr/share/icons/hicolor/512x512/apps
+
+          cp build/compressor AppDir/usr/bin/compressor
+          chmod +x AppDir/usr/bin/compressor
+
+          cat > AppDir/usr/share/applications/ImageCompressor.desktop << 'EOF'
+          [Desktop Entry]
+          Type=Application
+          Name=Image Compressor
+          Comment=Compress images with various formats
+          Exec=compressor
+          Icon=ImageCompressor
+          Categories=Graphics;Utility;
+          Terminal=false
+          StartupNotify=true
+          EOF
+
+          cp AppDir/usr/share/applications/ImageCompressor.desktop AppDir/ImageCompressor.desktop
+          cp resources/icon.png AppDir/usr/share/icons/hicolor/256x256/apps/compressor.png
+          cp resources/icon512.png AppDir/usr/share/icons/hicolor/512x512/apps/compressor.png
+          cp resources/icon.png AppDir/ImageCompressor.png
+
+      - name: Copy dependencies
+        run: |
+          mkdir -p AppDir/usr/lib
+          
+          SYSTEM_LIBS='libc.so.6 libm.so.6 libdl.so.2 libpthread.so.0 librt.so.1 ld-linux-x86-64.so.2 libstdc++.so.6 libgcc_s.so.1'
+          
+          copy_libs() {
+              local binary="$1"
+              local dest="$2"
+              local copied_libs="$3"
+              
+              ldd "$binary" | grep '=>' | awk '{print $3}' | sort -u | while read lib; do
+                  if [ -f "$lib" ]; then
+                      local libname=$(basename "$lib")
+                      
+                      if echo "$SYSTEM_LIBS" | grep -q "$libname"; then
+                          continue
+                      fi
+                      
+                      if ! echo "$copied_libs" | grep -q "$libname"; then
+                          cp "$lib" "$dest/"
+                          copied_libs="$copied_libs $libname"
+                          copy_libs "$lib" "$dest" "$copied_libs"
+                      fi
+                  fi
+              done
+          }
+          
+          copy_libs AppDir/usr/bin/compressor AppDir/usr/lib ""
+          
+          VIPS_LIBS=$(pkg-config --libs-only-L vips | sed 's/-L//g')
+          for lib_dir in $VIPS_LIBS; do
+              if [ -d "$lib_dir" ]; then
+                  find "$lib_dir" -maxdepth 1 -name 'libvips*.so*' -exec cp {} AppDir/usr/lib/ \; 2>/dev/null || true
+              fi
+          done
+
+      - name: Create AppRun
+        run: |
+          cat > AppDir/AppRun << 'EOF'
+          #!/bin/bash
+          SELF=$(readlink -f "$0")
+          HERE=${SELF%/*}
+          export LD_LIBRARY_PATH="${HERE}/usr/lib:${LD_LIBRARY_PATH}"
+          export PATH="${HERE}/usr/bin:${PATH}"
+          export XDG_DATA_DIRS="${HERE}/usr/share:${XDG_DATA_DIRS}"
+          exec "${HERE}/usr/bin/compressor" "$@"
+          EOF
+          chmod +x AppDir/AppRun
+
+      - name: Build AppImage
+        run: |
+          ./tools/appimagetool-x86_64.AppImage AppDir ImageCompressor-x86_64.AppImage
+          chmod +x ImageCompressor-x86_64.AppImage
 
       - name: Upload Linux artifact
         uses: actions/upload-artifact@v4
         with:
           name: image-compressor-linux-amd64
-          path: image-compressor-linux-amd64
+          path: ImageCompressor-x86_64.AppImage
 
   build-windows:
     runs-on: windows-latest
@@ -98,10 +193,10 @@ jobs:
             Automated release from commit ${{ github.sha }} (C Rewrite)
             
             ## Downloads
-            - **Linux**: `image-compressor-linux-amd64`
+            - **Linux**: `ImageCompressor-x86_64.AppImage` (self-contained, no dependencies required)
             - **Windows**: `image-compressor-windows-amd64.exe`
           files: |
-            dist/image-compressor-linux-amd64/image-compressor-linux-amd64
+            dist/image-compressor-linux-amd64/ImageCompressor-x86_64.AppImage
             dist/image-compressor-windows-amd64/image-compressor-windows-amd64.exe
           draft: false
           prerelease: false
