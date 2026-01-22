@@ -42,6 +42,7 @@ jobs:
 
       - name: Build for Linux
         run: |
+          mkdir -p build
           gcc src/main.c src/processor.c -o build/compressor \
               $(pkg-config --cflags vips) \
               -Iinclude \
