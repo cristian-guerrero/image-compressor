@@ -1,17 +1,30 @@
-# C build artifacts
+# Directorios de compilación
+build/
+AppDir/
+
+# Binarios compilados
 *.o
-*.exe
+*.so
+*.a
 compressor
+compressor.exe
 compressor_debug
 compressor_debug.exe
 
-# Legacy/Original Wails build
-build/bin
-node_modules
-frontend/dist
-tmp
-image-compressor
-image-compressor-test
-image-compressor.exe
-compressor.exe
-compressor_debug.exe
+# AppImages generados
+*.AppImage
+
+# Archivos temporales
+*~
+*.swp
+*.swo
+.DS_Store
+
+# Go
+go-legacy/tmp/
+go-legacy/main
+go-legacy/*.exe
+
+# Iconos generados
+resources/icon.png
+resources/icon512.png
