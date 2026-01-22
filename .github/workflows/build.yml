@@ -16,7 +16,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgl1-mesa-dev xorg-dev libvips-dev pkg-config cmake fuse libfuse2
+          sudo apt-get install -y libgl1-mesa-dev xorg-dev libvips-dev pkg-config cmake fuse libfuse2 imagemagick
 
       - name: Build and Install Raylib
         run: |
