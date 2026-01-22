@@ -129,7 +129,7 @@ jobs:
 
       - name: Build AppImage
         run: |
-          ./tools/appimagetool-x86_64.AppImage AppDir ImageCompressor-x86_64.AppImage
+          ARCH=x86_64 ./tools/appimagetool-x86_64.AppImage AppDir ImageCompressor-x86_64.AppImage
           chmod +x ImageCompressor-x86_64.AppImage
 
       - name: Upload Linux artifact
