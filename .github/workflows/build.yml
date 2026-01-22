@@ -159,7 +159,7 @@ jobs:
           gcc -c src/processor.c -o processor.o $(pkg-config --cflags vips) -Iinclude -O2
           gcc -c src/main.c -o main.o -Iinclude -O2
           gcc main.o processor.o -o image-compressor-windows-amd64.exe \
-              $(pkg-config --libs vips) -lraylib -lgdi32 -lwinmm -lopengl32 -lpthread -mwindows
+              $(pkg-config --libs vips) -lraylib -lgdi32 -lwinmm -lopengl32 -lpthread -mwindows -static
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
@@ -194,7 +194,7 @@ jobs:
             
             ## Downloads
             - **Linux**: `ImageCompressor-x86_64.AppImage` (self-contained, no dependencies required)
-            - **Windows**: `image-compressor-windows-amd64.exe`
+            - **Windows**: `image-compressor-windows-amd64.exe` (static build, no dependencies required)
           files: |
             dist/image-compressor-linux-amd64/ImageCompressor-x86_64.AppImage
             dist/image-compressor-windows-amd64/image-compressor-windows-amd64.exe
