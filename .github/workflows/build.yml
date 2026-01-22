@@ -162,11 +162,42 @@ jobs:
           gcc main.o processor.o -o image-compressor-windows-amd64.exe \
               $(pkg-config --libs vips) -lraylib -lgdi32 -lwinmm -lopengl32 -lpthread -mwindows
 
+      - name: Copy required DLLs for Windows
+        shell: msys2 {0}
+        run: |
+          mkdir -p windows-package
+          cp image-compressor-windows-amd64.exe windows-package/
+          
+          # Copy vips DLLs
+          VIPS_LIBS=$(pkg-config --libs-only-L vips | sed 's/-L//g')
+          for lib_dir in $VIPS_LIBS; do
+            find "$lib_dir" -maxdepth 1 -name '*.dll' -exec cp {} windows-package/ \; 2>/dev/null || true
+          done
+          
+          # Copy raylib DLL
+          RAYLIB_DLL=$(ldd image-compressor-windows-amd64.exe | grep raylib | awk '{print $3}')
+          if [ -n "$RAYLIB_DLL" ] && [ -f "$RAYLIB_DLL" ]; then
+            cp "$RAYLIB_DLL" windows-package/
+          fi
+          
+          # Copy other required DLLs
+          ldd image-compressor-windows-amd64.exe | grep '=>' | awk '{print $3}' | while read dll; do
+            if [ -f "$dll" ]; then
+              cp "$dll" windows-package/ 2>/dev/null || true
+            fi
+          done
+
+      - name: Create Windows ZIP package
+        shell: msys2 {0}
+        run: |
+          cd windows-package
+          zip -r ../image-compressor-windows-amd64.zip .
+
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
           name: image-compressor-windows-amd64
-          path: image-compressor-windows-amd64.exe
+          path: image-compressor-windows-amd64.zip
 
   release:
     needs: [build-linux, build-windows]
@@ -195,9 +226,9 @@ jobs:
             
             ## Downloads
             - **Linux**: `ImageCompressor-x86_64.AppImage` (self-contained, no dependencies required)
-            - **Windows**: `image-compressor-windows-amd64.exe` (requires vips and raylib DLLs)
+            - **Windows**: `image-compressor-windows-amd64.zip` (includes binary + all required DLLs)
           files: |
             dist/image-compressor-linux-amd64/ImageCompressor-x86_64.AppImage
-            dist/image-compressor-windows-amd64/image-compressor-windows-amd64.exe
+            dist/image-compressor-windows-amd64/image-compressor-windows-amd64.zip
           draft: false
           prerelease: false
