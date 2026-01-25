@@ -1,6 +1,7 @@
 # Directorios de compilación
 build/
 AppDir/
+external/
 
 # Binarios compilados
 *.o
