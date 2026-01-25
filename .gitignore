@@ -19,6 +19,7 @@ compressor_debug.exe
 *.swp
 *.swo
 .DS_Store
+tmp/
 
 # Go
 go-legacy/tmp/
@@ -28,3 +29,4 @@ go-legacy/*.exe
 # Iconos generados
 resources/icon.png
 resources/icon512.png
+.build-cache/
