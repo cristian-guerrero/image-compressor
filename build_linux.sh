@@ -142,7 +142,7 @@ gcc src/main.c src/processor.c -o "$BUILD_DIR/compressor" \
     -I"$RAYLIB_DIR/include" \
     $VIPS_LIBS \
     -L"$RAYLIB_DIR/lib" \
-    -lraylib -lGL -lm -lpthread -ldl -lrt -lX11 -lXrandr -lXi -lXinerama -lXcursor \
+    -lraylib -l:libGL.so.1 -lm -lpthread -ldl -lrt -l:libX11.so.6 -l:libXrandr.so.2 -l:libXi.so.6 -l:libXinerama.so.1 -l:libXcursor.so.1 \
     -Wl,-rpath,'$ORIGIN/../external/libvips/lib:$ORIGIN/../external/raylib/lib' \
     -O2
 
