@@ -143,6 +143,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc
+            zip
+
       - name: Cache Vendor Dependencies
         id: cache-vendor
         uses: actions/cache@v4
@@ -156,10 +165,24 @@ jobs:
           ./fetch_deps.bat
 
       - name: Build and Package
+        # Use MSYS2 to ensure we have a clean 64-bit environment and all required DLLs
+        shell: msys2 {0}
         run: |
+          # Use the existing build script but make sure it runs in MSYS2
           ./build_win.bat
+          
+          # Copy extra MSYS2 runtime DLLs that might be missed
+          cp /mingw64/bin/libwinpthread-1.dll build/
+          cp /mingw64/bin/libgcc_s_seh-1.dll build/
+          cp /mingw64/bin/libstdc++-6.dll build/
+          
+          # Ensure modules are copied correctly
+          if [ -d vendor/vips/bin/vips-modules-8.15 ]; then
+            cp -r vendor/vips/bin/vips-modules-8.15 build/
+          fi
 
       - name: Compress Release (7zip)
+        shell: bash
         run: |
           7z a image-compressor-windows-amd64.zip ./build/*
 
