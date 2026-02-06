@@ -143,56 +143,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install MSYS2 and dependencies
-        uses: msys2/setup-msys2@v2
+      - name: Cache Vendor Dependencies
+        id: cache-vendor
+        uses: actions/cache@v4
         with:
-          msystem: MINGW64
-          update: true
-          install: >-
-            mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-pkg-config
-            mingw-w64-x86_64-libvips
-            mingw-w64-x86_64-raylib
-            zip
+          path: vendor
+          key: ${{ runner.os }}-vendor-${{ hashFiles('fetch_deps.bat') }}
 
-      - name: Build for Windows
-        shell: msys2 {0}
+      - name: Fetch Dependencies
+        if: steps.cache-vendor.outputs.cache-hit != 'true'
         run: |
-          gcc -c src/processor.c -o processor.o $(pkg-config --cflags vips) -Iinclude -O2
-          gcc -c src/main.c -o main.o -Iinclude -O2
-          gcc main.o processor.o -o image-compressor-windows-amd64.exe \
-              $(pkg-config --libs vips) -lraylib -lgdi32 -lwinmm -lopengl32 -lpthread -mwindows
+          ./fetch_deps.bat
 
-      - name: Copy required DLLs for Windows
-        shell: msys2 {0}
+      - name: Build and Package
         run: |
-          mkdir -p windows-package
-          cp image-compressor-windows-amd64.exe windows-package/
-          
-          # Copy vips DLLs
-          VIPS_LIBS=$(pkg-config --libs-only-L vips | sed 's/-L//g')
-          for lib_dir in $VIPS_LIBS; do
-            find "$lib_dir" -maxdepth 1 -name '*.dll' -exec cp {} windows-package/ \; 2>/dev/null || true
-          done
-          
-          # Copy raylib DLL
-          RAYLIB_DLL=$(ldd image-compressor-windows-amd64.exe | grep raylib | awk '{print $3}')
-          if [ -n "$RAYLIB_DLL" ] && [ -f "$RAYLIB_DLL" ]; then
-            cp "$RAYLIB_DLL" windows-package/
-          fi
-          
-          # Copy other required DLLs
-          ldd image-compressor-windows-amd64.exe | grep '=>' | awk '{print $3}' | while read dll; do
-            if [ -f "$dll" ]; then
-              cp "$dll" windows-package/ 2>/dev/null || true
-            fi
-          done
+          ./build_win.bat
 
-      - name: Create Windows ZIP package
-        shell: msys2 {0}
+      - name: Compress Release (7zip)
         run: |
-          cd windows-package
-          zip -r ../image-compressor-windows-amd64.zip .
+          7z a image-compressor-windows-amd64.zip ./build/*
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4

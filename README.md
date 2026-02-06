@@ -25,6 +25,17 @@ pacman -S mingw-w64-x86_64-libvips
 pacman -S mingw-w64-x86_64-libheif  # Required for AVIF support
 ```
 
+### Windows (Vendorización / Sin MSYS2)
+
+### Windows (Auto-Setup / Sin dependencias)
+
+Si no tienes `pkg-config` ni las librerías instaladas, los scripts `build_win.bat` y `build_debug.bat` descargarán automáticamente lo necesario:
+1. Simplemente ejecuta `./build_win.bat`.
+2. El script detectará que faltan dependencias y las descargará en la carpeta `vendor/`.
+3. La compilación continuará automáticamente.
+
+Esto descarga ~100MB con los binarios oficiales de **libvips** y **raylib**.
+
 ### Linux
 
 ```bash

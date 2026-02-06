@@ -28,3 +28,5 @@ go-legacy/*.exe
 # Iconos generados
 resources/icon.png
 resources/icon512.png
+#
+vendor/

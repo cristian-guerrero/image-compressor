@@ -289,7 +289,7 @@ int main(int argc, char **argv) {
         Color dropBorder = isDragging ? (Color){ 100, 200, 100, 255 } : (Color){ 70, 70, 80, 255 };
         
         DrawRectangleRounded(dropZone, 0.1f, 8, dropBg);
-        DrawRectangleRoundedLinesEx(dropZone, 0.1f, 8, 2.0f, dropBorder);
+        DrawRectangleRoundedLines(dropZone, 0.1f, 8, 2.0f, dropBorder);
         
         // Click to open folder picker
         if (isDragging && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {

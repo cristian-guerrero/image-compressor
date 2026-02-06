@@ -7,33 +7,39 @@ echo " Image Compressor - Build (Linux)"
 echo "============================================"
 echo ""
 
-# Check for pkg-config
-if ! command -v pkg-config &> /dev/null; then
-    echo "ERROR: pkg-config not found."
-    echo "Install with: sudo apt install pkg-config"
+# Setup Paths and dependencies
+VIPS_CFLAGS=""
+VIPS_LIBS=""
+RAYLIB_CFLAGS=""
+RAYLIB_LIBS="-lraylib -lGL -lm -lpthread -ldl -lrt -lX11"
+
+# Check for vendor folder
+if [ -d "vendor/vips" ]; then
+    echo "[INFO] Using vendored libvips..."
+    VIPS_CFLAGS="-Ivendor/vips/include"
+    VIPS_LIBS="-Lvendor/vips/lib -lvips"
+elif pkg-config --exists vips; then
+    VIPS_CFLAGS=$(pkg-config --cflags vips)
+    VIPS_LIBS=$(pkg-config --libs vips)
+else
+    echo "[WARN] libvips not found."
+    echo "Install with: sudo apt install libvips-dev"
+    # We don't auto-download vips on linux as it's too complex
     exit 1
 fi
 
-# Check for vips
-if ! pkg-config --exists vips; then
-    echo "ERROR: libvips not found."
-    echo ""
-    echo "Install with:"
-    echo "  Ubuntu/Debian: sudo apt install libvips-dev"
-    echo "  Arch Linux:    sudo pacman -S libvips"
-    echo "  Fedora:        sudo dnf install vips-devel"
-    exit 1
+if [ -d "vendor/raylib" ]; then
+    echo "[INFO] Using vendored raylib..."
+    RAYLIB_CFLAGS="-Ivendor/raylib/include"
+    RAYLIB_LIBS="-Lvendor/raylib/lib -lraylib -lGL -lm -lpthread -ldl -lrt -lX11"
 fi
 
-echo "Building with libvips and raylib..."
-echo "VIPS_CFLAGS: $(pkg-config --cflags vips)"
-echo "VIPS_LIBS:   $(pkg-config --libs vips)"
-echo ""
+echo "Building..."
 
 gcc src/main.c src/processor.c -o compressor \
-    $(pkg-config --cflags --libs vips) \
+    $VIPS_CFLAGS $RAYLIB_CFLAGS \
     -Iinclude \
-    -lraylib -lGL -lm -lpthread -ldl -lrt -lX11 \
+    $VIPS_LIBS $RAYLIB_LIBS \
     -O2
 
 if [ $? -eq 0 ]; then
