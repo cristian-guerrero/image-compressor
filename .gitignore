@@ -1,6 +1,7 @@
 # Directorios de compilación
 build/
 AppDir/
+external/
 
 # Binarios compilados
 *.o
@@ -19,6 +20,7 @@ compressor_debug.exe
 *.swp
 *.swo
 .DS_Store
+tmp/
 
 # Go
 go-legacy/tmp/
@@ -30,3 +32,5 @@ resources/icon.png
 resources/icon512.png
 #
 vendor/
+.build-cache/
+

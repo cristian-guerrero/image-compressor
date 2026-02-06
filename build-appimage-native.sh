@@ -38,18 +38,31 @@ if ! command -v pkg-config &> /dev/null; then
     exit 1
 fi
 
-# Verificar libvips
+# Preferir dependencias vendorizadas en external/
+EXTERNAL="$PROJECT_DIR/external"
+if [ -f "$EXTERNAL/libvips/lib/pkgconfig/vips.pc" ]; then
+    export PKG_CONFIG_PATH="$EXTERNAL/libvips/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
+    echo -e "${BLUE}[INFO]${NC} Usando libvips vendorizado en $EXTERNAL/libvips"
+fi
+
+# Verificar libvips (sistema o vendorizado)
 if ! pkg-config --exists vips; then
-    echo -e "${RED}[ERROR]${NC} libvips no está instalado. Instálalo con: sudo apt install libvips-dev"
+    echo -e "${RED}[ERROR]${NC} libvips no está instalado ni vendorizado. Instálalo con: sudo apt install libvips-dev or put it in $EXTERNAL/libvips"
     exit 1
 fi
 
-# Verificar raylib
-if ! pkg-config --exists raylib; then
-    echo -e "${YELLOW}[WARN]${NC} raylib no encontrado via pkg-config, intentando compilar con -lraylib directo"
+# Verificar raylib (sistema o vendorizado)
+if pkg-config --exists raylib; then
+    echo -e "${GREEN}✓${NC} raylib encontrado via pkg-config"
+else
+    if [ -d "$EXTERNAL/raylib/include" ] && [ -d "$EXTERNAL/raylib/lib" ]; then
+        echo -e "${BLUE}[INFO]${NC} raylib vendorizado encontrado en $EXTERNAL/raylib"
+    else
+        echo -e "${YELLOW}[WARN]${NC} raylib no encontrado via pkg-config ni en external/, el link enlazará con -lraylib y esperamos que esté en el sistema"
+    fi
 fi
 
-echo -e "${GREEN}✓${NC} Dependencias del sistema verificadas"
+echo -e "${GREEN}✓${NC} Dependencias verificadas"
 
 # ============================================
 # PASO 2: Compilar el binario
@@ -58,23 +71,56 @@ echo -e "${BLUE}[2/7]${NC} Compilando binario..."
 
 mkdir -p build
 
-# Compilar versión release con optimizaciones
-gcc src/main.c src/processor.c \
-    $(pkg-config --cflags vips) \
-    -Iinclude \
-    -o build/compressor \
-    $(pkg-config --libs vips) \
-    -lraylib -lGL -lm -lpthread -ldl -lrt -lX11 \
-    -O3 -DNDEBUG
+if [ -f "$PROJECT_DIR/build/compressor" ]; then
+    echo -e "${BLUE}[INFO]${NC} Binario ya existe en build/, omitiendo compilación"
+else
+    # Si hay raylib vendorizado, úsalo
+    RAYLIB_CFLAGS=""
+    RAYLIB_LIBS="-lraylib"
+    if [ -d "$EXTERNAL/raylib/include" ]; then
+        RAYLIB_CFLAGS="-I$EXTERNAL/raylib/include"
+    fi
+    if [ -d "$EXTERNAL/raylib/lib" ]; then
+        RAYLIB_LIBS="-L$EXTERNAL/raylib/lib -lraylib"
+    fi
 
-echo -e "${GREEN}✓${NC} Binario compilado exitosamente"
+    # Ajustes para glib headers que a veces vienen en libvips precompilado
+    VIPS_CFLAGS_EXTRA=""
+    if [ -d "$EXTERNAL/libvips/include/glib-2.0" ]; then
+        VIPS_CFLAGS_EXTRA="$VIPS_CFLAGS_EXTRA -I$EXTERNAL/libvips/include/glib-2.0"
+    fi
+    if [ -d "$EXTERNAL/libvips/lib/glib-2.0/include" ]; then
+        VIPS_CFLAGS_EXTRA="$VIPS_CFLAGS_EXTRA -I$EXTERNAL/libvips/lib/glib-2.0/include"
+    fi
+
+    # Asegurar que el binario busque librerías en AppDir/usr/lib al correr dentro del AppImage
+    RPATH="\$ORIGIN/../lib"
+    # También añadir rutas absolutas a external para ejecución local previa al empaquetado
+    if [ -d "$EXTERNAL/libvips/lib" ]; then
+        RPATH="$RPATH:$EXTERNAL/libvips/lib"
+    fi
+    if [ -d "$EXTERNAL/raylib/lib" ]; then
+        RPATH="$RPATH:$EXTERNAL/raylib/lib"
+    fi
+
+    gcc src/main.c src/processor.c \
+        $(pkg-config --cflags vips) $VIPS_CFLAGS_EXTRA $RAYLIB_CFLAGS \
+        -Iinclude \
+        -o build/compressor \
+        $(pkg-config --libs vips) $RAYLIB_LIBS \
+        -lGL -lm -lpthread -ldl -lrt -lX11 \
+        -Wl,-rpath,"$RPATH" \
+        -O3 -DNDEBUG
+
+    echo -e "${GREEN}✓${NC} Binario compilado exitosamente"
+fi
 
 # ============================================
 # PASO 3: Verificar/Descargar herramientas de AppImage
 # ============================================
 echo -e "${BLUE}[3/7]${NC} Verificando herramientas de AppImage..."
 
-APPIMAGE_TOOLS_DIR="$PROJECT_DIR/.appimage-tools"
+APPIMAGE_TOOLS_DIR="${APPIMAGE_TOOLS_DIR:-$PROJECT_DIR/.build-cache/appimage-tools}"
 mkdir -p "$APPIMAGE_TOOLS_DIR"
 
 # URLs de las herramientas de AppImage
@@ -166,18 +212,27 @@ echo -e "${GREEN}✓${NC} Herramientas de AppImage listas"
 # ============================================
 echo -e "${BLUE}[4/7]${NC} Creando estructura AppDir..."
 
-rm -rf AppDir
-mkdir -p AppDir/usr/bin
-mkdir -p AppDir/usr/share/applications
-mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
-mkdir -p AppDir/usr/share/icons/hicolor/512x512/apps
+APPDIR="$PROJECT_DIR/build/AppDir"
 
-# Copiar binario
-cp build/compressor AppDir/usr/bin/compressor
-chmod +x AppDir/usr/bin/compressor
+rm -rf "$APPDIR"
+mkdir -p "$APPDIR/usr/bin"
+mkdir -p "$APPDIR/usr/share/applications"
+mkdir -p "$APPDIR/usr/share/icons/hicolor/256x256/apps"
+mkdir -p "$APPDIR/usr/share/icons/hicolor/512x512/apps"
+
+# Copiar binario: usar build/compressor si existe, si no compilar
+if [ -f "$PROJECT_DIR/build/compressor" ]; then
+    cp "$PROJECT_DIR/build/compressor" "$APPDIR/usr/bin/compressor"
+    chmod +x "$APPDIR/usr/bin/compressor"
+else
+    echo -e "${YELLOW}[INFO]${NC} binario no encontrado en build/, ejecutando ./build_linux.sh"
+    (cd "$PROJECT_DIR" && ./build_linux.sh)
+    cp "$PROJECT_DIR/build/compressor" "$APPDIR/usr/bin/compressor"
+    chmod +x "$APPDIR/usr/bin/compressor"
+fi
 
 # Crear archivo .desktop
-cat > AppDir/usr/share/applications/${APP_NAME}.desktop << 'EOF'
+cat > "$APPDIR/usr/share/applications/${APP_NAME}.desktop" << 'EOF'
 [Desktop Entry]
 Type=Application
 Name=Image Compressor
@@ -190,24 +245,24 @@ StartupNotify=true
 EOF
 
 # Copiar archivo .desktop a la raíz de AppDir (requerido por appimagetool)
-cp AppDir/usr/share/applications/${APP_NAME}.desktop AppDir/${APP_NAME}.desktop
+cp "$APPDIR/usr/share/applications/${APP_NAME}.desktop" "$APPDIR/${APP_NAME}.desktop"
 
 # Copiar icono
 if [ -f 'resources/icon.png' ]; then
-    cp resources/icon.png AppDir/usr/share/icons/hicolor/256x256/apps/compressor.png
+    cp resources/icon.png "$APPDIR/usr/share/icons/hicolor/256x256/apps/compressor.png"
 else
     echo -e "${YELLOW}[WARN]${NC} No se encontró icono de 256x256"
 fi
 
 if [ -f 'resources/icon512.png' ]; then
-    cp resources/icon512.png AppDir/usr/share/icons/hicolor/512x512/apps/compressor.png
+    cp resources/icon512.png "$APPDIR/usr/share/icons/hicolor/512x512/apps/compressor.png"
 else
     echo -e "${YELLOW}[WARN]${NC} No se encontró icono de 512x512"
 fi
 
 # Copiar icono a la raíz de AppDir (requerido por appimagetool)
 if [ -f 'resources/icon.png' ]; then
-    cp resources/icon.png AppDir/${APP_NAME}.png
+    cp resources/icon.png "$APPDIR/${APP_NAME}.png"
 else
     echo -e "${YELLOW}[WARN]${NC} No se encontró icono para AppDir"
 fi
@@ -219,7 +274,7 @@ echo -e "${GREEN}✓${NC} Estructura AppDir creada"
 # ============================================
 echo -e "${BLUE}[5/7]${NC} Copiando dependencias..."
 
-mkdir -p AppDir/usr/lib
+mkdir -p "$APPDIR/usr/lib"
 
 # Librerías del sistema que NO deben copiarse (deben venir del host)
 SYSTEM_LIBS='libc.so.6 libm.so.6 libdl.so.2 libpthread.so.0 librt.so.1 ld-linux-x86-64.so.2 libstdc++.so.6 libgcc_s.so.1'
@@ -243,10 +298,15 @@ copy_libs() {
             
             # Verificar si ya fue copiada
             if ! echo "$copied_libs" | grep -q "$libname"; then
-                cp "$lib" "$dest/"
-                echo "  Copiada: $libname"
+                # Evitar copiar si el origen ya está dentro del destino (mismo archivo)
+                if [ "$(readlink -f "$lib")" != "$(readlink -f "$dest/$libname" 2>/dev/null || true)" ]; then
+                    cp "$lib" "$dest/" || true
+                    echo "  Copiada: $libname"
+                else
+                    echo "  Omitida (ya en destino): $libname"
+                fi
                 copied_libs="$copied_libs $libname"
-                
+
                 # Copiar dependencias de esta librería recursivamente
                 copy_libs "$lib" "$dest" "$copied_libs"
             fi
@@ -256,15 +316,45 @@ copy_libs() {
 
 # Copiar librerías del binario principal
 copied=''
-copy_libs AppDir/usr/bin/compressor AppDir/usr/lib "$copied"
+copy_libs "$APPDIR/usr/bin/compressor" "$APPDIR/usr/lib" "$copied"
+
+# Copiar librerías vendorizadas (libvips, raylib) si existen en external/
+if [ -d "$PROJECT_DIR/external/libvips/lib" ]; then
+    echo -e "${BLUE}[INFO]${NC} Copiando libvips vendorizado a AppDir/usr/lib..."
+    for f in "$PROJECT_DIR/external/libvips/lib/"*; do
+        [ -e "$f" ] || continue
+        dest="$APPDIR/usr/lib/$(basename "$f")"
+        # Si ya existe el destino, omitir (evita copiar sobre sí mismo)
+        if [ -e "$dest" ]; then
+            continue
+        fi
+        cp -a "$f" "$dest" 2>/dev/null || true
+    done
+fi
+if [ -d "$PROJECT_DIR/external/raylib/lib" ]; then
+    echo -e "${BLUE}[INFO]${NC} Copiando raylib vendorizado a AppDir/usr/lib..."
+    for f in "$PROJECT_DIR/external/raylib/lib/"*; do
+        [ -e "$f" ] || continue
+        dest="$APPDIR/usr/lib/$(basename "$f")"
+        # Si ya existe el destino, omitir (evita copiar sobre sí mismo)
+        if [ -e "$dest" ]; then
+            continue
+        fi
+        cp -a "$f" "$dest" 2>/dev/null || true
+    done
+fi
 
 # Copiar librerías específicas de vips que pueden no aparecer en ldd
-VIPS_LIBS=$(pkg-config --libs-only-L vips | sed 's/-L//g')
+VIPS_LIBS=$(pkg-config --libs-only-L vips | sed 's/-L//g' || true)
 for lib_dir in $VIPS_LIBS; do
     if [ -d "$lib_dir" ]; then
-        find "$lib_dir" -maxdepth 1 -name 'libvips*.so*' -exec cp {} AppDir/usr/lib/ \; 2>/dev/null || true
+        find "$lib_dir" -maxdepth 1 -name 'libvips*.so*' -exec cp {} "$APPDIR/usr/lib/" \; 2>/dev/null || true
     fi
 done
+
+# Intentar copiar dependencias detectadas por ldd (recursivo)
+copied=''  # reusar variable
+copy_libs "$APPDIR/usr/bin/compressor" "$APPDIR/usr/lib" "$copied"
 
 echo -e "${GREEN}✓${NC} Dependencias copiadas"
 
@@ -273,7 +363,7 @@ echo -e "${GREEN}✓${NC} Dependencias copiadas"
 # ============================================
 echo -e "${BLUE}[6/7]${NC} Creando AppRun..."
 
-cat > AppDir/AppRun << 'EOF'
+cat > "$APPDIR/AppRun" << 'EOF'
 #!/bin/bash
 
 SELF=$(readlink -f "$0")
@@ -290,7 +380,7 @@ export XDG_DATA_DIRS="${HERE}/usr/share:${XDG_DATA_DIRS}"
 exec "${HERE}/usr/bin/compressor" "$@"
 EOF
 
-chmod +x AppDir/AppRun
+chmod +x "$APPDIR/AppRun"
 
 echo -e "${GREEN}✓${NC} AppRun creado"
 
@@ -304,8 +394,12 @@ APPIMAGE_FILE="build/${APP_NAME}-${APP_VERSION}-x86_64.AppImage"
 # Eliminar AppImage anterior si existe
 rm -f "${APPIMAGE_FILE}"
 
+# Asegurar que AppDir/usr/lib esté antes en LD_LIBRARY_PATH al ejecutar appimagetool
+# (algunas versiones de appimagetool respetan LD_LIBRARY_PATH durante el empaquetado)
+export LD_LIBRARY_PATH="$APPDIR/usr/lib:${LD_LIBRARY_PATH:-}"
+
 # Generar AppImage
-"$APPIMAGETOOL" AppDir "${APPIMAGE_FILE}"
+"$APPIMAGETOOL" "$APPDIR" "${APPIMAGE_FILE}"
 
 # Dar permisos de ejecución
 chmod +x "${APPIMAGE_FILE}"
