@@ -1,4 +1,5 @@
 @echo off
+setlocal enabledelayedexpansion
 REM Build script for Windows (MSYS2 MINGW64)
 REM Requires: raylib and libvips installed via MSYS2 pacman
 REM 
@@ -53,21 +54,21 @@ if exist "vendor\raylib" (
 )
 
 echo Step 1: Compiling processor.c (libvips)...
-gcc -c src/processor.c -o build/processor.o %VIPS_CFLAGS% -Iinclude -O2
+gcc -m64 -c src/processor.c -o build/processor.o %VIPS_CFLAGS% -Iinclude -O2
 if %ERRORLEVEL% NEQ 0 (
     echo ERROR: Failed to compile processor.c
     exit /b 1
 )
 
 echo Step 2: Compiling main.c (raylib only)...
-gcc -c src/main.c -o build/main.o %RAYLIB_CFLAGS% -Iinclude -O2
+gcc -m64 -c src/main.c -o build/main.o %RAYLIB_CFLAGS% -Iinclude -O2
 if %ERRORLEVEL% NEQ 0 (
     echo ERROR: Failed to compile main.c
     exit /b 1
 )
 
 echo Step 3: Linking (Release Mode)...
-gcc build/main.o build/processor.o -o build/compressor.exe %VIPS_LIBS% %RAYLIB_LIBS% -lgdi32 -lwinmm -lopengl32 -lpthread -lpsapi -mwindows -Wl,--subsystem,windows
+gcc -m64 build/main.o build/processor.o -o build/compressor.exe %VIPS_LIBS% %RAYLIB_LIBS% -lgdi32 -lwinmm -lopengl32 -lpthread -lpsapi -static-libgcc -static-libstdc++ -mwindows -Wl,--subsystem,windows
 if %ERRORLEVEL% NEQ 0 (
     echo ERROR: Failed to link
     exit /b 1
@@ -85,6 +86,17 @@ if exist "vendor\raylib" (
     if exist "vendor\raylib\lib\*.dll" (
         echo [INFO] Copying raylib DLLs...
         copy "vendor\raylib\lib\*.dll" "build\" >nul
+    )
+)
+
+REM Copy compiler runtime DLLs (fixing 0xc000007b errors)
+echo [INFO] Copying 64-bit runtime DLLs...
+for %%i in (gcc_s_seh_64-1.dll winpthread_64-1.dll stdcpp_64-6.dll) do (
+    if exist "C:\TDM-GCC-64\bin\lib%%i" (
+        set "SRC=C:\TDM-GCC-64\bin\lib%%i"
+        set "DST=%%i"
+        set "DST=!DST:_64=!"
+        copy "C:\TDM-GCC-64\bin\lib%%i" "build\lib!DST!" >nul 2>&1
     )
 )
 
