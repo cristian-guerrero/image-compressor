@@ -77,6 +77,11 @@ jobs:
           cp resources/icon512.png AppDir/usr/share/icons/hicolor/512x512/apps/compressor.png
           cp resources/icon.png AppDir/ImageCompressor.png
 
+      - name: Copy resources
+        run: |
+          mkdir -p AppDir/usr/bin/resources
+          cp -r resources/* AppDir/usr/bin/resources/
+
       - name: Copy dependencies
         run: |
           mkdir -p AppDir/usr/lib
@@ -123,7 +128,8 @@ jobs:
           export LD_LIBRARY_PATH="${HERE}/usr/lib:${LD_LIBRARY_PATH}"
           export PATH="${HERE}/usr/bin:${PATH}"
           export XDG_DATA_DIRS="${HERE}/usr/share:${XDG_DATA_DIRS}"
-          exec "${HERE}/usr/bin/compressor" "$@"
+          cd "${HERE}/usr/bin"
+          exec ./compressor "$@"
           EOF
           chmod +x AppDir/AppRun
 

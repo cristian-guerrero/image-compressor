@@ -198,15 +198,56 @@ int main(int argc, char **argv) {
     const int screenWidth = 700;
     const int screenHeight = 550;
     
+    SetConfigFlags(FLAG_WINDOW_HIGHDPI | FLAG_MSAA_4X_HINT); // Enable High-DPI support and anti-aliasing
     InitWindow(screenWidth, screenHeight, "Manga Optimizer - AVIF Compressor");
     SetTargetFPS(60);
 
-    // Load custom font from memory (embedded)
-    guiFont = LoadFontFromMemory(".ttf", font_data, font_data_size, 64, 0, 250);
+    // Load custom font with specific ranges for Japanese and special character support
+    int ranges[][2] = {
+        {32, 126},      // Basic Latin
+        {0x00A0, 0x00FF}, // Latin-1 Supplement
+        {0x0100, 0x017F}, // Latin Extended-A
+        {0x0300, 0x036F}, // Combining Diacritical Marks
+        {0x2460, 0x24FF}, // Enclosed Alphanumerics
+        {0x2600, 0x26FF}, // Miscellaneous Symbols
+        {0x3000, 0x303F}, // CJK Symbols and Punctuation
+        {0x3040, 0x309F}, // Hiragana
+        {0x30A0, 0x30FF}, // Katakana
+        {0x4E00, 0x9FFF}, // CJK Unified Ideographs
+        {0xFF00, 0xFFEF}  // Halfwidth and Fullwidth Forms
+    };
+    int totalCodepoints = 0;
+    int rangeCount = sizeof(ranges) / sizeof(ranges[0]);
+    for (int i = 0; i < rangeCount; i++) totalCodepoints += (ranges[i][1] - ranges[i][0] + 1);
+    
+    int *codepoints = (int *)malloc(totalCodepoints * sizeof(int));
+    if (codepoints) {
+        int k = 0;
+        for (int i = 0; i < rangeCount; i++) {
+            for (int j = ranges[i][0]; j <= ranges[i][1]; j++) {
+                codepoints[k++] = j;
+            }
+        }
+        
+        // Load font at 24px. For 22,000+ characters, 24px is the sweet spot.
+        // A larger size (like 64px) creates an enormous texture that leads to loss of detail.
+        const char* fontPath = "resources/NotoSansJP-Bold.ttf";
+        if (!FileExists(fontPath)) {
+            // Try one level up in case we are running from build/ and resources is in root (for dev)
+            fontPath = "../resources/NotoSansJP-Bold.ttf";
+        }
+        
+        guiFont = LoadFontEx(fontPath, 24, codepoints, totalCodepoints);
+        free(codepoints);
+    } else {
+        guiFont = GetFontDefault();
+    }
+
     if (guiFont.texture.id == 0) {
         printf("WARNING: Failed to load embedded font, using default\n");
         guiFont = GetFontDefault();
     } else {
+        // Use Bilinear filter for sharp but smooth 2D text
         SetTextureFilter(guiFont.texture, TEXTURE_FILTER_BILINEAR);
     }
     
@@ -401,21 +442,14 @@ int main(int argc, char **argv) {
                     statusColor = (Color){ 200, 150, 100, 255 };
                 }
                 
-                // Folder name - Truncate and clean non-ASCII for display
+                // Folder name - Truncate if too long, but keep Unicode
                 char displayPath[128];
-                int k = 0;
-                for (int j = 0; folderName[j] && k < 80; j++) {
-                    unsigned char c = (unsigned char)folderName[j];
-                    if (c < 128) displayPath[k++] = folderName[j];
-                    else if (k < 77) {
-                         displayPath[k++] = '.';
-                         while ((folderName[j+1] & 0xC0) == 0x80) j++;
-                    }
-                }
-                displayPath[k] = '\0';
-                if (strlen(folderName) > (size_t)k && k >= 80) {
-                    displayPath[77] = '.'; displayPath[78] = '.'; displayPath[79] = '.';
-                }
+                strncpy(displayPath, folderName, sizeof(displayPath) - 1);
+                displayPath[sizeof(displayPath) - 1] = '\0';
+                
+                // If it's too long for display, we could add "..." but Raylib's TextFormat 
+                // and DrawTextEx are fine with long strings (they just overflow or we can use a ScissorMode)
+                // However, let's keep it simple for now and just show the name.
                 
                 // Row 1: Folder name
                 DrawTextEx(guiFont, displayPath, (Vector2){ 35, (float)yOffset }, 16, 0, WHITE);
@@ -495,7 +529,7 @@ int main(int argc, char **argv) {
         }
         
         // Footer
-        DrawTextEx(guiFont, "v1.8 - raylib + libvips | UI Font: Cascadia Mono (Embedded)", (Vector2){ 20, (float)screenHeight - 22 }, 13, 0, DARKGRAY);
+        DrawTextEx(guiFont, "v1.8 - raylib + libvips | UI Font: Noto Sans JP (Unicode Enabled)", (Vector2){ 20, (float)screenHeight - 22 }, 13, 0, DARKGRAY);
         
         // Help Dialog (top layer)
         if (showHelp) DrawHelpDialog(screenWidth, screenHeight, &showHelp);

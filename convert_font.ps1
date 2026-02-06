@@ -1,4 +1,4 @@
-$bytes = [System.IO.File]::ReadAllBytes("resources/font.ttf")
+$bytes = [System.IO.File]::ReadAllBytes("resources/NotoSansJP-Bold.ttf")
 $sb = New-Object System.Text.StringBuilder
 [void]$sb.AppendLine("unsigned char font_data[] = {")
 for ($i = 0; $i -lt $bytes.Length; $i++) {

@@ -89,6 +89,10 @@ if exist "vendor\raylib" (
     )
 )
 
+echo [INFO] Copying resources...
+if not exist "build\resources" mkdir "build\resources"
+xcopy /E /Y /I "resources\*" "build\resources\" >nul
+
 REM Copy compiler runtime DLLs (fixing 0xc000007b errors)
 echo [INFO] Copying 64-bit runtime DLLs...
 for %%i in (gcc_s_seh_64-1.dll winpthread_64-1.dll stdcpp_64-6.dll) do (

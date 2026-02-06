@@ -146,6 +146,11 @@ gcc src/main.c src/processor.c -o "$BUILD_DIR/compressor" \
     -Wl,-rpath,'$ORIGIN/../external/libvips/lib:$ORIGIN/../external/raylib/lib' \
     -O2
 
+# Copy resources
+echo "Copying resources..."
+mkdir -p "$BUILD_DIR/resources"
+cp -r "$ROOT/resources/." "$BUILD_DIR/resources/"
+
 echo ""
 echo "============================================"
 echo " BUILD SUCCESSFUL!"

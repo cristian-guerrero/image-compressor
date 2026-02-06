@@ -267,6 +267,11 @@ else
     echo -e "${YELLOW}[WARN]${NC} No se encontró icono para AppDir"
 fi
 
+# Copiar recursos (fuentes, etc)
+echo -e "${BLUE}[INFO]${NC} Copiando recursos a AppDir..."
+mkdir -p "$APPDIR/usr/bin/resources"
+cp -r resources/* "$APPDIR/usr/bin/resources/"
+
 echo -e "${GREEN}✓${NC} Estructura AppDir creada"
 
 # ============================================
@@ -376,8 +381,11 @@ export PATH="${HERE}/usr/bin:${PATH}"
 # Configurar rutas de datos de la aplicación
 export XDG_DATA_DIRS="${HERE}/usr/share:${XDG_DATA_DIRS}"
 
+# Cambiar al directorio del binario para que encuentre los recursos relativos
+cd "${HERE}/usr/bin"
+
 # Ejecutar la aplicación
-exec "${HERE}/usr/bin/compressor" "$@"
+exec ./compressor "$@"
 EOF
 
 chmod +x "$APPDIR/AppRun"
