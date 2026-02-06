@@ -20,7 +20,7 @@ jobs:
 
       - name: Build and Install Raylib
         run: |
-          git clone --depth 1 https://github.com/raysan5/raylib.git
+          git clone --depth 1 --branch 5.0 https://github.com/raysan5/raylib.git
           cd raylib
           mkdir build && cd build
           cmake -DBUILD_EXAMPLES=OFF -DBUILD_SHARED_LIBS=ON ..

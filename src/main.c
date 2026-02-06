@@ -289,7 +289,11 @@ int main(int argc, char **argv) {
         Color dropBorder = isDragging ? (Color){ 100, 200, 100, 255 } : (Color){ 70, 70, 80, 255 };
         
         DrawRectangleRounded(dropZone, 0.1f, 8, dropBg);
+#if defined(RAYLIB_VERSION_MAJOR) && (RAYLIB_VERSION_MAJOR > 5 || (RAYLIB_VERSION_MAJOR == 5 && RAYLIB_VERSION_MINOR >= 1))
+        DrawRectangleRoundedLinesEx(dropZone, 0.1f, 8, 2.0f, dropBorder);
+#else
         DrawRectangleRoundedLines(dropZone, 0.1f, 8, 2.0f, dropBorder);
+#endif
         
         // Click to open folder picker
         if (isDragging && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
