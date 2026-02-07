@@ -229,15 +229,20 @@ int main(int argc, char **argv) {
             }
         }
         
-        // Load font at 24px. For 22,000+ characters, 24px is the sweet spot.
-        // A larger size (like 64px) creates an enormous texture that leads to loss of detail.
+        // Initial frame to avoid a white screen while loading resources (like the large font)
+        BeginDrawing();
+        ClearBackground((Color){ 25, 25, 30, 255 });
+        EndDrawing();
+
+        // Load font at 20px. For 22,000+ characters, 20px is the sweet spot to stay 
+        // within a 4096x4096px texture limit and avoid long startup times.
         const char* fontPath = "resources/NotoSansJP-Bold.ttf";
         if (!FileExists(fontPath)) {
             // Try one level up in case we are running from build/ and resources is in root (for dev)
             fontPath = "../resources/NotoSansJP-Bold.ttf";
         }
         
-        guiFont = LoadFontEx(fontPath, 32, codepoints, totalCodepoints);
+        guiFont = LoadFontEx(fontPath, 20, codepoints, totalCodepoints);
         free(codepoints);
     } else {
         guiFont = GetFontDefault();
