@@ -237,7 +237,7 @@ int main(int argc, char **argv) {
             fontPath = "../resources/NotoSansJP-Bold.ttf";
         }
         
-        guiFont = LoadFontEx(fontPath, 24, codepoints, totalCodepoints);
+        guiFont = LoadFontEx(fontPath, 32, codepoints, totalCodepoints);
         free(codepoints);
     } else {
         guiFont = GetFontDefault();
